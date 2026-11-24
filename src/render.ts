@@ -10,7 +10,9 @@ import {
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNear, ANIMAL_DEFS } from './animals';
 import { TOOLS } from './tools';
-import type { GameState, Plot, Dir, CropId, ResNode, Animal } from './types';
+import { PALETTES } from './seasons';
+import type { Palette } from './seasons';
+import type { GameState, Plot, Dir, CropId, ResNode, Animal, Season } from './types';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -20,6 +22,9 @@ let dpr = 1;
 
 let camX = 0;
 let camY = 0;
+
+/** 当前季节色板；换季时重绘底图 */
+let pal: Palette = PALETTES.spring;
 
 /* ---------------- 粒子 ---------------- */
 
@@ -93,6 +98,17 @@ export function initRenderer(cv: HTMLCanvasElement, dprValue: number) {
   drawBaseTerrain(bc);
 }
 
+/** 切换季节色板并重绘静态底图（换季 / 读档时调用） */
+export function applySeason(season: Season): void {
+  pal = PALETTES[season];
+  if (!base) return;
+  const bc = base.getContext('2d');
+  if (!bc) return;
+  bc.imageSmoothingEnabled = false;
+  bc.clearRect(0, 0, base.width, base.height);
+  drawBaseTerrain(bc);
+}
+
 /* ---------------- 底图（静态地形） ---------------- */
 
 function drawBaseTerrain(c: Ctx) {
@@ -114,17 +130,17 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
   switch (t) {
     case T.GRASS:
     case T.FLOWER: {
-      c.fillStyle = '#84c169';
+      c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
       // 草簇
-      c.fillStyle = '#74ae59';
+      c.fillStyle = pal.grassDark;
       for (let i = 0; i < 5; i++) {
         const rr = hash(tx * 7 + i, ty * 13 + i * 3);
         const px = x + 6 + rr * (TILE - 14);
         const py = y + 8 + hash(tx + i * 5, ty + i) * (TILE - 18);
         c.fillRect(Math.floor(px), Math.floor(py), 3, 2);
       }
-      if (t === T.FLOWER) {
+      if (t === T.FLOWER && pal.bloom) {
         const cols = ['#f2d45c', '#f08fb0', '#ffffff', '#e07f5a'];
         for (let i = 0; i < 3; i++) {
           const rr = hash(tx * 31 + i, ty * 17 + i);
@@ -132,7 +148,7 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
           const py = y + 10 + hash(tx + i * 9, ty * 3 + i) * (TILE - 22);
           c.fillStyle = cols[Math.floor(rr * cols.length)];
           c.fillRect(Math.floor(px), Math.floor(py), 3, 3);
-          c.fillStyle = '#5f9e48';
+          c.fillStyle = pal.flowerStem;
           c.fillRect(Math.floor(px + 1), Math.floor(py + 4), 1, 3);
         }
       }
@@ -181,17 +197,17 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
     case T.ROOF:
     case T.DOOR:
       // 由 drawHouse 统一绘制
-      c.fillStyle = '#84c169';
+      c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
       break;
     case T.TREE: {
-      c.fillStyle = '#84c169';
+      c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
       drawTree(c, x + TILE / 2, y + TILE - 6, 1 + r * 0.12);
       break;
     }
     default: {
-      c.fillStyle = '#84c169';
+      c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
     }
   }
@@ -199,17 +215,17 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
 
 function drawTree(c: Ctx, cx: number, baseY: number, scale: number) {
   const h = 34 * scale;
-  c.fillStyle = '#6b4a2e';
+  c.fillStyle = pal.trunk;
   c.fillRect(cx - 3, baseY - 16, 6, 16);
-  c.fillStyle = '#4f8a42';
+  c.fillStyle = pal.foliage[0];
   c.beginPath();
   c.ellipse(cx, baseY - 16 - h * 0.35, 20 * scale, 16 * scale, 0, 0, Math.PI * 2);
   c.fill();
-  c.fillStyle = '#63a84f';
+  c.fillStyle = pal.foliage[1];
   c.beginPath();
   c.ellipse(cx - 6, baseY - 16 - h * 0.5, 15 * scale, 12 * scale, 0, 0, Math.PI * 2);
   c.fill();
-  c.fillStyle = '#78bb5c';
+  c.fillStyle = pal.foliage[2];
   c.beginPath();
   c.ellipse(cx + 7, baseY - 16 - h * 0.3, 13 * scale, 11 * scale, 0, 0, Math.PI * 2);
   c.fill();
@@ -468,7 +484,7 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = '#84c169';
+  ctx.fillStyle = pal.grass;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
   // 静态底图
@@ -526,9 +542,11 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   ctx.restore();
 
-  // 天气与昼夜
+  // 季节色罩 → 昼夜 → 降水
+  drawSeasonTint(ctx);
   drawDayNight(ctx, state);
   if (state.weather === 'rain') drawRain(ctx, nowMs);
+  else if (state.weather === 'snow') drawSnow(ctx, nowMs);
 }
 
 /* ---------------- 耕地 ---------------- */
@@ -655,6 +673,16 @@ function drawCrop(c: Ctx, cx: number, baseY: number, plot: Plot, cropId: CropId,
       c.fill();
       c.fillStyle = shade(def.fruit, -22);
       c.fillRect(cx - 3, baseY - 16, 3, 8);
+      break;
+    }
+    case 'leafy': {
+      // 菠菜：一丛贴地的叶片
+      for (const [dx, dy, rot] of [[-7, -2, -0.5], [0, -5, 0], [7, -2, 0.5], [-3, 1, -0.2], [4, 1, 0.2]]) {
+        c.fillStyle = shade(def.fruit, dy < -3 ? 18 : 0);
+        c.beginPath();
+        c.ellipse(cx + dx, baseY + dy - 4, 5, 8, rot, 0, Math.PI * 2);
+        c.fill();
+      }
       break;
     }
   }
@@ -852,19 +880,19 @@ function drawNode(c: Ctx, node: ResNode, nowMs: number) {
     const dmg = 1 - node.hp / node.maxHp;
     const sway = Math.sin(nowMs / 900 + node.tx) * (1.5 + dmg * 4);
     // 树干
-    c.fillStyle = '#6b4a2e';
+    c.fillStyle = pal.trunk;
     c.fillRect(cx - 4 + sway * 0.3, baseY - 22, 8, 22);
     // 树冠
     const r = 22 - dmg * 6;
-    c.fillStyle = '#4f8a42';
+    c.fillStyle = pal.foliage[0];
     c.beginPath();
     c.ellipse(cx + sway, baseY - 34, r, r * 0.82, 0, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = '#63a84f';
+    c.fillStyle = pal.foliage[1];
     c.beginPath();
     c.ellipse(cx + sway - 7, baseY - 40, r * 0.72, r * 0.6, 0, 0, Math.PI * 2);
     c.fill();
-    c.fillStyle = '#78bb5c';
+    c.fillStyle = pal.foliage[2];
     c.beginPath();
     c.ellipse(cx + sway + 8, baseY - 32, r * 0.6, r * 0.52, 0, 0, Math.PI * 2);
     c.fill();
@@ -1071,6 +1099,33 @@ function drawRain(c: Ctx, nowMs: number) {
     c.moveTo(px, py);
     c.lineTo(px - 4, py + 14);
     c.stroke();
+  }
+}
+
+/** 季节环境色罩：很淡，只为烘托氛围 */
+function drawSeasonTint(c: Ctx) {
+  if (pal.tintAlpha <= 0) return;
+  c.fillStyle = `rgba(${pal.tint},${pal.tintAlpha})`;
+  c.fillRect(0, 0, VIEW_W, VIEW_H);
+}
+
+/** 飘雪：缓慢下落 + 左右摆动的小雪点 */
+function drawSnow(c: Ctx, nowMs: number) {
+  c.fillStyle = 'rgba(180,200,230,.10)';
+  c.fillRect(0, 0, VIEW_W, VIEW_H);
+  const t = nowMs / 1000;
+  c.fillStyle = 'rgba(255,255,255,.85)';
+  for (let i = 0; i < 70; i++) {
+    const seed = i * 6271;
+    const speed = 40 + (seed % 50);
+    const x = ((seed % 1000) / 1000) * VIEW_W + Math.sin(t * 1.2 + i) * 18;
+    const y = (((seed * 7) % 1000) / 1000) * VIEW_H + t * speed;
+    const px = ((x % VIEW_W) + VIEW_W) % VIEW_W;
+    const py = y % (VIEW_H + 20);
+    const size = 1.5 + (i % 3);
+    c.beginPath();
+    c.arc(px, py, size, 0, Math.PI * 2);
+    c.fill();
   }
 }
 

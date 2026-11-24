@@ -1,0 +1,131 @@
+/* ============================================================
+   seasons.ts — 四季：推导、天气、生长倍率、色板
+   ------------------------------------------------------------
+   一年 32 天，每季 8 天。季节给经营加上时间维度：
+   当季作物正常长，反季 ×2 慢；地图随季节换色，冬天飘雪。
+   ============================================================ */
+
+import type { CropDef, Season, Weather } from './types';
+
+export const SEASON_LEN = 8;
+export const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
+
+export const SEASON_LABEL: Record<Season, string> = {
+  spring: '春',
+  summer: '夏',
+  autumn: '秋',
+  winter: '冬'
+};
+
+export const SEASON_ICON: Record<Season, string> = {
+  spring: '🌸',
+  summer: '☀️',
+  autumn: '🍂',
+  winter: '❄️'
+};
+
+/** 第几天属于哪个季节（day 从 1 起） */
+export function seasonOfDay(day: number): Season {
+  return SEASONS[Math.floor((day - 1) / SEASON_LEN) % 4];
+}
+
+/** 当前季节里的第几天（1~8） */
+export function dayInSeason(day: number): number {
+  return ((day - 1) % SEASON_LEN) + 1;
+}
+
+/** 第几年（从 1 起） */
+export function yearOfDay(day: number): number {
+  return Math.floor((day - 1) / (SEASON_LEN * 4)) + 1;
+}
+
+/** 明天是否换季 */
+export function seasonChangesAfter(day: number): boolean {
+  return dayInSeason(day) === SEASON_LEN;
+}
+
+/* ---------------- 天气 ---------------- */
+
+/** 各季节降水概率；冬天降水是雪 */
+const PRECIP_CHANCE: Record<Season, number> = {
+  spring: 0.35,
+  summer: 0.15,
+  autumn: 0.20,
+  winter: 0.40
+};
+
+export function rollWeather(season: Season): Weather {
+  if (Math.random() >= PRECIP_CHANCE[season]) return 'sunny';
+  return season === 'winter' ? 'snow' : 'rain';
+}
+
+/** 雨会自动浇灌；雪不会（冬天得手动浇水） */
+export function weatherWaters(w: Weather): boolean {
+  return w === 'rain';
+}
+
+export const WEATHER_LABEL: Record<Weather, string> = {
+  sunny: '晴',
+  rain: '雨',
+  snow: '雪'
+};
+
+export const WEATHER_ICON: Record<Weather, string> = {
+  sunny: '☀️',
+  rain: '🌧️',
+  snow: '🌨️'
+};
+
+/* ---------------- 生长 ---------------- */
+
+/** 当季 1 倍速，反季 2 倍慢 */
+export function growthMultiplier(crop: CropDef, season: Season): number {
+  return crop.season === season ? 1 : 2;
+}
+
+export function isInSeason(crop: CropDef, season: Season): boolean {
+  return crop.season === season;
+}
+
+/* ---------------- 色板 ---------------- */
+
+export interface Palette {
+  grass: string;
+  grassDark: string;
+  /** 树冠 [深, 中, 浅] */
+  foliage: [string, string, string];
+  trunk: string;
+  flowerStem: string;
+  /** 是否开花（冬天不开） */
+  bloom: boolean;
+  /** 环境色罩 rgba 前缀与透明度 */
+  tint: string;
+  tintAlpha: number;
+}
+
+export const PALETTES: Record<Season, Palette> = {
+  spring: {
+    grass: '#84c169', grassDark: '#74ae59',
+    foliage: ['#4f8a42', '#63a84f', '#78bb5c'],
+    trunk: '#6b4a2e', flowerStem: '#5f9e48', bloom: true,
+    tint: '255,240,200', tintAlpha: 0.03
+  },
+  summer: {
+    grass: '#5da84e', grassDark: '#4e9240',
+    foliage: ['#3f7a35', '#529243', '#66a84f'],
+    trunk: '#6b4a2e', flowerStem: '#4e8a3c', bloom: true,
+    tint: '255,220,120', tintAlpha: 0.05
+  },
+  autumn: {
+    grass: '#c2a24e', grassDark: '#a98c3f',
+    foliage: ['#c9743f', '#d99a3c', '#e0b04a'],
+    trunk: '#6b4a2e', flowerStem: '#a98c3f', bloom: true,
+    tint: '230,150,60', tintAlpha: 0.07
+  },
+  winter: {
+    grass: '#dfe6ea', grassDark: '#c8d2d8',
+    foliage: ['#9fb2ba', '#b8c6cc', '#d0dade'],
+    trunk: '#5a4a3e', flowerStem: '#b8c6cc', bloom: false,
+    tint: '160,190,230', tintAlpha: 0.08
+  }
+};

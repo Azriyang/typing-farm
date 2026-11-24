@@ -6,6 +6,7 @@ import { CFG } from './config';
 import { TOOLS } from './tools';
 import { getDef } from './items';
 import { usedSlots } from './items';
+import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON } from './seasons';
 import type { GameState } from './types';
 import type { TypingSession } from './typing';
 
@@ -99,8 +100,12 @@ export function syncHud(state: GameState): void {
 
   $('hud-day').textContent = String(state.day);
   $('hud-clock').textContent = clockText(state.time);
-  $('hud-weather').textContent = state.weather === 'rain' ? '雨' : '晴';
-  $('hud-weather-ico').textContent = state.weather === 'rain' ? '🌧️' : '☀️';
+  $('hud-weather').textContent = WEATHER_LABEL[state.weather];
+  $('hud-weather-ico').textContent = WEATHER_ICON[state.weather];
+  const season = seasonOfDay(state.day);
+  $('hud-season').textContent = SEASON_LABEL[season];
+  $('hud-season-ico').textContent = SEASON_ICON[season];
+  $('hud-season-day').textContent = `第${dayInSeason(state.day)}天`;
   $('hud-coins').textContent = String(state.coins);
   $('hud-stamina').textContent = String(Math.max(0, Math.round(state.stamina)));
   $('hud-bag').textContent = `${usedSlots(state.bag)}/${state.bagSize}`;

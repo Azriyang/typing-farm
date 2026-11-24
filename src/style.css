@@ -704,3 +704,28 @@ html, body {
   background: linear-gradient(90deg, #f0a0b0, #e06080);
   border-radius: 999px;
 }
+/* ---- 四季 ---- */
+
+.stat.season b { color: #4a7a3c; }
+.stat.season .sub { font-size: 10px; }
+
+.season-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.season-tag.in { background: #e3f2d8; color: #3f7a2e; border: 1px solid #b6dca4; }
+.season-tag.off { background: #f3e8d0; color: #a07030; border: 1px solid #e0c89a; }
+
+.season-note {
+  background: #eef5e4;
+  border-left: 4px solid #7aa85a;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin: 8px 0;
+}

@@ -9,13 +9,15 @@ export type CropId =
   | 'tomato'
   | 'corn'
   | 'pumpkin'
-  | 'strawberry';
+  | 'strawberry'
+  | 'spinach';
 
 export type ToolId = 'hoe' | 'can' | 'axe' | 'pick' | 'sickle' | 'rod';
 
 export type Dir = 'down' | 'up' | 'left' | 'right';
-export type Weather = 'sunny' | 'rain';
-export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root';
+export type Weather = 'sunny' | 'rain' | 'snow';
+export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
+export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy';
 
 export interface CropDef {
   id: CropId;
@@ -28,6 +30,8 @@ export interface CropDef {
   fruit: string;
   shape: FruitShape;
   emoji: string;
+  /** 适宜季节；反季生长 ×2 慢 */
+  season: Season;
 }
 
 export interface Word {
@@ -124,6 +128,8 @@ export interface Plot {
   stage: number;
   watered: boolean;
   quality: number;
+  /** 当前阶段的生长累积 0~1；反季每晚 +0.5，当季 +1。旧存档缺省按 0 */
+  growth?: number;
 }
 
 export interface Player {

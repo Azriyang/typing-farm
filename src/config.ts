@@ -8,42 +8,55 @@ export const CROPS: Record<CropId, CropDef> = {
   turnip: {
     id: 'turnip', zh: '萝卜', en: 'turnip',
     days: 3, price: 90, seed: 30,
-    leaf: '#5aa84f', fruit: '#f2f0e4', shape: 'root', emoji: '🥬'
+    leaf: '#5aa84f', fruit: '#f2f0e4', shape: 'root', emoji: '🥬',
+    season: 'spring'
   },
   potato: {
     id: 'potato', zh: '土豆', en: 'potato',
     days: 4, price: 145, seed: 48,
-    leaf: '#4f9d4a', fruit: '#c99a5b', shape: 'root', emoji: '🥔'
+    leaf: '#4f9d4a', fruit: '#c99a5b', shape: 'root', emoji: '🥔',
+    season: 'spring'
   },
   cabbage: {
     id: 'cabbage', zh: '卷心菜', en: 'cabbage',
     days: 5, price: 225, seed: 76,
-    leaf: '#6fae4e', fruit: '#a8d06a', shape: 'round', emoji: '🥬'
+    leaf: '#6fae4e', fruit: '#a8d06a', shape: 'round', emoji: '🥬',
+    season: 'autumn'
   },
   tomato: {
     id: 'tomato', zh: '番茄', en: 'tomato',
     days: 5, price: 270, seed: 92,
-    leaf: '#63a84f', fruit: '#e34b3d', shape: 'round', emoji: '🍅'
+    leaf: '#63a84f', fruit: '#e34b3d', shape: 'round', emoji: '🍅',
+    season: 'summer'
   },
   corn: {
     id: 'corn', zh: '玉米', en: 'corn',
     days: 6, price: 350, seed: 120,
-    leaf: '#5f9e48', fruit: '#f2c649', shape: 'long', emoji: '🌽'
+    leaf: '#5f9e48', fruit: '#f2c649', shape: 'long', emoji: '🌽',
+    season: 'summer'
   },
   pumpkin: {
     id: 'pumpkin', zh: '南瓜', en: 'pumpkin',
     days: 7, price: 500, seed: 170,
-    leaf: '#4a8f3e', fruit: '#e8933a', shape: 'gourd', emoji: '🎃'
+    leaf: '#4a8f3e', fruit: '#e8933a', shape: 'gourd', emoji: '🎃',
+    season: 'autumn'
   },
   strawberry: {
     id: 'strawberry', zh: '草莓', en: 'strawberry',
     days: 8, price: 640, seed: 220,
-    leaf: '#4c9a44', fruit: '#e8456b', shape: 'berry', emoji: '🍓'
+    leaf: '#4c9a44', fruit: '#e8456b', shape: 'berry', emoji: '🍓',
+    season: 'spring'
+  },
+  spinach: {
+    id: 'spinach', zh: '菠菜', en: 'spinach',
+    days: 4, price: 150, seed: 50,
+    leaf: '#3f7a44', fruit: '#5aa84f', shape: 'leafy', emoji: '🥗',
+    season: 'winter'
   }
 };
 
 export const CROP_ORDER: CropId[] = [
-  'turnip', 'potato', 'cabbage', 'tomato', 'corn', 'pumpkin', 'strawberry'
+  'turnip', 'potato', 'strawberry', 'tomato', 'corn', 'cabbage', 'pumpkin', 'spinach'
 ];
 
 /* ---------------- 词库 ---------------- */

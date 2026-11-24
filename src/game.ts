@@ -6,8 +6,12 @@ import { CFG, CROPS, CROP_ORDER } from './config';
 import { storage } from './platform';
 import { Sound } from './audio';
 import { TypingSession } from './typing';
-import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase } from './render';
+import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase, applySeason } from './render';
 import * as UI from './ui';
+import {
+  seasonOfDay, rollWeather, weatherWaters, growthMultiplier, isInSeason,
+  SEASON_LABEL, SEASON_ICON
+} from './seasons';
 import {
   buildMap, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
   TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea
@@ -414,6 +418,7 @@ function applyAction(p: Pending, perfect: boolean): void {
       const plot = state.plots[i];
       plot.crop = p.crop;
       plot.stage = 0;
+      plot.growth = 0;
       plot.watered = false;
       plot.quality = 1;
       Bag.removeFromBag(state.bag, Bag.seedItemId(p.crop), 1);
@@ -421,6 +426,9 @@ function applyAction(p: Pending, perfect: boolean): void {
       burst(c.x, c.y + 12, '#9ad06a', 8);
       floatText(c.x, c.y - 12, `种下 ${CROPS[p.crop].zh}`, '#d8f5c0');
       Sound.play('plant');
+      if (!isInSeason(CROPS[p.crop], seasonOfDay(state.day))) {
+        UI.toast(`${CROPS[p.crop].zh}不是当季作物，会长得慢一倍`, 'bad');
+      }
       break;
     }
     case 'water': {
@@ -448,6 +456,7 @@ function applyAction(p: Pending, perfect: boolean): void {
       state.stats.harvested++;
       plot.crop = null;
       plot.stage = 0;
+      plot.growth = 0;
       plot.watered = false;
       plot.quality = 1;
       const c = plotCenter(i);
@@ -1087,13 +1096,18 @@ function sellAll(): void {
 /* ---------------- 商店 ---------------- */
 
 function openShop(): void {
+  const curSeason = seasonOfDay(state.day);
   const seedRows = CROP_ORDER.map((id) => {
     const c = CROPS[id];
     const cant = state.coins < c.seed ? ' cant' : '';
     const stock = Bag.countInBag(state.bag, Bag.seedItemId(id));
+    const inSeason = c.season === curSeason;
+    const seasonTag = inSeason
+      ? `<span class="season-tag in">${SEASON_ICON[c.season]} 当季</span>`
+      : `<span class="season-tag off">${SEASON_ICON[c.season]} ${SEASON_LABEL[c.season]}季 · 慢一倍</span>`;
     return `<div class="shop-row${cant}">
       <div>
-        <div class="nm">${c.emoji} ${c.zh}种子 <span class="dm">${c.en}</span></div>
+        <div class="nm">${c.emoji} ${c.zh}种子 <span class="dm">${c.en}</span> ${seasonTag}</div>
         <div class="dt">${c.days}天成熟 · 售${c.price}G · 持有 ${stock}</div>
       </div>
       <div class="pr">${c.seed}G</div>
@@ -1166,7 +1180,7 @@ function openShop(): void {
 
   UI.showModal(
     '订购箱',
-    `<p class="dim">邮购直达。种子、工具、动物、背包扩容都在这儿。</p>
+    `<p class="dim">邮购直达。种子、工具、动物、背包扩容都在这儿。现在是 ${SEASON_ICON[curSeason]} <b>${SEASON_LABEL[curSeason]}季</b>，当季作物长得快。</p>
      <h3>种子</h3><div class="shop-list">${seedRows}</div>
      <h3>工具</h3><div class="shop-list">${toolRows}</div>
      <h3>动物</h3><div class="shop-list">${animalRows}</div>
@@ -1660,7 +1674,7 @@ function openDex(): void {
     const c = CROPS[id];
     return `<div class="dex-item"><span class="em">${c.emoji}</span>
       <span class="info"><b>${c.zh}</b> <span class="en">${c.en}</span><br>
-      ${c.days}天 · ${c.price}G</span></div>`;
+      ${c.days}天 · ${c.price}G · ${SEASON_ICON[c.season]}${SEASON_LABEL[c.season]}季</span></div>`;
   }).join('');
   const toolsHtml = (Object.keys(TOOLS) as ToolId[]).map((id) => {
     const t = TOOLS[id];
@@ -1688,11 +1702,21 @@ function sleep(fainted = false): void {
   const reportDay = state.day;
   const harvested = state.todayHarvest;
   const earned = state.todayEarned;
+  const oldSeason = seasonOfDay(reportDay);
 
-  // 作物生长
+  // 作物生长：当季 1 倍速，反季 2 倍慢（生长累积，跨夜保留进度）
   for (const plot of state.plots) {
     if (plot.crop) {
-      if (plot.watered) plot.stage = Math.min(CROPS[plot.crop].days, plot.stage + 1);
+      if (plot.watered) {
+        const def = CROPS[plot.crop];
+        const mult = growthMultiplier(def, oldSeason);
+        plot.growth = (plot.growth ?? 0) + 1 / mult;
+        while (plot.growth >= 1 && plot.stage < def.days) {
+          plot.stage++;
+          plot.growth -= 1;
+        }
+        if (plot.stage >= def.days) plot.growth = 0;
+      }
       plot.watered = false;
     }
   }
@@ -1704,7 +1728,11 @@ function sleep(fainted = false): void {
   state.stats.daysPlayed++;
   state.time = CFG.DAY_START;
   state.stamina = CFG.STAMINA_MAX;
-  state.weather = Math.random() < CFG.RAIN_CHANCE ? 'rain' : 'sunny';
+
+  const newSeason = seasonOfDay(state.day);
+  const changedSeason = newSeason !== oldSeason;
+  state.weather = rollWeather(newSeason);
+  if (changedSeason) applySeason(newSeason);
 
   // 节点恢复
   for (const n of state.nodes) {
@@ -1716,7 +1744,8 @@ function sleep(fainted = false): void {
   // 清掉已消失的杂草
   state.nodes = state.nodes.filter((n) => n.kind !== 'weed' || n.hp > 0);
 
-  if (state.weather === 'rain') {
+  // 只有雨会自动浇灌；雪不会
+  if (weatherWaters(state.weather)) {
     for (const plot of state.plots) if (plot.crop) plot.watered = true;
   }
 
@@ -1735,9 +1764,15 @@ function sleep(fainted = false): void {
   save();
   Sound.play('day');
 
-  const rainNote = state.weather === 'rain'
+  const weatherNote = state.weather === 'rain'
     ? '<p class="dim">🌧️ 外面下起了雨，作物今晚会自动喝饱水。</p>'
-    : '<p class="dim">☀️ 明天是个晴天，记得给作物浇水。</p>';
+    : state.weather === 'snow'
+      ? '<p class="dim">🌨️ 明天飘雪。雪不会浇灌作物，记得手动浇水。</p>'
+      : '<p class="dim">☀️ 明天是个晴天，记得给作物浇水。</p>';
+
+  const seasonNote = changedSeason
+    ? `<p class="season-note">${SEASON_ICON[newSeason]} <b>${SEASON_LABEL[newSeason]}天来了！</b>当季作物正常生长，反季的会慢一倍。</p>`
+    : '';
 
   UI.showModal(
     fainted ? `第 ${reportDay} 天 · 累倒了` : `第 ${reportDay} 天 · 晚安`,
@@ -1748,7 +1783,7 @@ function sleep(fainted = false): void {
        <span class="k">持有金币</span><span class="v">${state.coins} G</span>
        <span class="k">连击纪录</span><span class="v">×${state.stats.maxCombo}</span>
      </div>
-     ${rainNote}`,
+     ${seasonNote}${weatherNote}`,
     [{ label: `开始第 ${state.day} 天`, cls: 'green', onClick: () => UI.hideModal() }]
   );
 }
@@ -1948,6 +1983,7 @@ function onKeyUp(e: KeyboardEvent): void {
 
 function startGame(fresh: boolean): void {
   if (fresh) state = newState();
+  applySeason(seasonOfDay(state.day));
   running = true;
   UI.hideHint();
   document.getElementById('title-screen')?.classList.add('hidden');
@@ -2022,6 +2058,13 @@ function setupTitle(): void {
          <li>喂食 → 第二天才有蛋 / 奶；抚摸涨心情</li>
          <li>心情决定蛋 / 奶品质，饿着会掉心情</li>
          <li>挤奶是三连短词，像挤奶的节奏</li>
+       </ul>
+       <h3>四季</h3>
+       <ul>
+         <li>一年 32 天，每季 8 天：春 🌸 夏 ☀️ 秋 🍂 冬 ❄️</li>
+         <li>每种作物有适宜季节，当季正常长，<b>反季慢一倍</b></li>
+         <li>春种萝卜/土豆/草莓，夏种番茄/玉米，秋种卷心菜/南瓜，冬种菠菜</li>
+         <li>春雨多、冬飘雪；雨自动浇灌，雪不会，冬天要手动浇水</li>
        </ul>
        <h3>一天的循环</h3>
        <ul>

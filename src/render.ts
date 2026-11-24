@@ -525,6 +525,36 @@ function drawFurniture(c: Ctx, scene: string) {
         c.fillRect(x + 1, y + h - 6, w - 2, 4);
         break;
       }
+      case 'bench': {
+        // 加工台：木质操作台 + 台面上的罐子与工具
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 2, y + 8, w - 4, h - 10);
+        c.fillStyle = '#a97c4f';
+        c.fillRect(x + 4, y + 10, w - 8, h - 16);
+        // 台面高光
+        c.fillStyle = '#c1966a';
+        c.fillRect(x + 4, y + 10, w - 8, 3);
+        // 桌腿
+        c.fillStyle = '#4a3018';
+        c.fillRect(x + 6, y + h - 8, 4, 8);
+        c.fillRect(x + w - 10, y + h - 8, 4, 8);
+        // 罐子
+        c.fillStyle = '#7a8a9a';
+        c.fillRect(x + 10, y + 12, 9, 11);
+        c.fillStyle = '#98a8b8';
+        c.fillRect(x + 10, y + 12, 9, 2);
+        c.fillStyle = '#c9a44e';
+        c.fillRect(x + 9, y + 9, 11, 4);
+        // 小桶
+        c.fillStyle = '#8a6340';
+        c.fillRect(x + 26, y + 14, 12, 9);
+        c.fillStyle = '#b98d5c';
+        c.fillRect(x + 26, y + 14, 12, 2);
+        c.fillStyle = '#6b4a2e';
+        c.fillRect(x + 26, y + 17, 12, 1);
+        c.fillRect(x + 26, y + 20, 12, 1);
+        break;
+      }
     }
 
     // 家具底部统一加一条接触阴影

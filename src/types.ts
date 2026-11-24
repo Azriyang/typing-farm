@@ -210,6 +210,17 @@ export interface Stats {
   gifts: number;
 }
 
+/** 加工中的任务（加工台一次只能做一样） */
+export interface CraftingJob {
+  recipeId: string;
+  /** 品质：取原料品质的平均 */
+  quality: number;
+  /** 完成时刻（day * 1440 + time） */
+  doneAt: number;
+  /** 开始那天 */
+  startDay: number;
+}
+
 export interface GameState {
   version: number;
   day: number;
@@ -239,6 +250,8 @@ export interface GameState {
   scene: SceneId;
   /** 全局难度 */
   difficulty: 'easy' | 'normal' | 'hard';
+  /** 加工台当前在做的活；null 表示空闲 */
+  crafting?: CraftingJob | null;
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

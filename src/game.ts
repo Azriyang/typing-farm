@@ -27,6 +27,9 @@ import {
   markCorrect, markWrong, startDay as startLearnDay, stats as learnStats
 } from './learning';
 import {
+  CRAFT_RECIPES, recipeById, absoluteMinutes, outName, inputText, remainingText
+} from './craft';
+import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
 import {
@@ -378,6 +381,8 @@ function normalizeState(s: GameState): void {
   if (typeof s.farmUnlocked !== 'number') s.farmUnlocked = 1;
   if (s.scene !== 'house' && s.scene !== 'coop' && s.scene !== 'barn') s.scene = 'farm';
   if (s.difficulty !== 'easy' && s.difficulty !== 'hard') s.difficulty = 'normal';
+  // 旧档没有加工台字段
+  if (s.crafting === undefined) s.crafting = null;
 }
 
 function newState(): GameState {
@@ -1121,6 +1126,134 @@ function askSleep(): void {
   );
 }
 
+/* ---------------- 加工台 ---------------- */
+
+/** 统计背包里某物品的数量 */
+function bagCount(id: string): number {
+  let n = 0;
+  for (const s of state.bag) if (s && s.id === id) n += s.qty;
+  return n;
+}
+
+function openCraftPanel(): void {
+  const job = state.crafting ?? null;
+  const nowAbs = absoluteMinutes(state.day, state.time);
+
+  // 顶部：当前任务状态
+  let jobHtml: string;
+  if (!job) {
+    jobHtml = `<p class="dim">加工台空着。放下原料，等它慢慢做好。</p>`;
+  } else {
+    const recipe = recipeById(job.recipeId);
+    const done = nowAbs >= job.doneAt;
+    const name = recipe ? outName(recipe) : '??';
+    jobHtml = done
+      ? `<div class="craft-job done"><span class="cj-ico">✅</span>
+           <span class="cj-main"><b>${name}</b><span class="cj-sub">已做好，可以取走</span></span></div>`
+      : `<div class="craft-job"><span class="cj-ico">⏳</span>
+           <span class="cj-main"><b>${name}</b><span class="cj-sub">${remainingText(job, state.day, state.time)}</span></span></div>`;
+  }
+
+  // 配方列表
+  const rows = CRAFT_RECIPES.map((r) => {
+    const have = r.input.every((i) => bagCount(i.id) >= i.qty);
+    const busy = !!job;
+    const out = getDef(r.out);
+    const can = have && !busy;
+    const gross = (out?.price ?? 0) - r.input.reduce((sum, i) => sum + (getDef(i.id)?.price ?? 0) * i.qty, 0);
+    return `<div class="craft-row${can ? '' : ' cant'}">
+      <div class="cr-main">
+        <div class="nm">${out?.icon ?? ''} ${out?.name ?? r.out} <span class="dm">${inputText(r)}</span></div>
+        <div class="dt">${Math.round(r.minutes / 60 * 10) / 10} 小时 · 售价 ${out?.price ?? 0}G
+          <span class="cr-gain ${gross >= 0 ? 'up' : 'down'}">${gross >= 0 ? '+' : ''}${gross}G</span></div>
+      </div>
+      <button class="btn small" data-craft="${r.id}" ${can ? '' : 'disabled'}>${busy ? '占用中' : have ? '开始' : '缺料'}</button>
+    </div>`;
+  }).join('');
+
+  UI.showModal(
+    '加工台',
+    `<p class="dim">把原料加工成更值钱的东西。一次只能做一样，需要等一段时间。</p>
+     ${jobHtml}
+     <div class="craft-list">${rows}</div>`,
+    [
+      ...(job && nowAbs >= job.doneAt
+        ? [{ label: '取出', cls: 'green', onClick: () => collectCraft() }]
+        : []),
+      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-craft]').forEach((el) => {
+    el.addEventListener('click', () => startCraft(el.dataset.craft as string));
+  });
+}
+
+function startCraft(recipeId: string): void {
+  if (state.crafting) { UI.toast('加工台还在忙', 'bad'); return; }
+  const r = recipeById(recipeId);
+  if (!r) return;
+
+  for (const i of r.input) {
+    if (bagCount(i.id) < i.qty) {
+      UI.toast(`${getDef(i.id)?.name ?? i.id} 不够`, 'bad');
+      return;
+    }
+  }
+
+  // 原料品质取平均，四舍五入；加工品继承这个品质
+  let qSum = 0;
+  let qCount = 0;
+  for (const i of r.input) {
+    let need = i.qty;
+    for (const s of state.bag) {
+      if (!s || s.id !== i.id || need <= 0) continue;
+      const take = Math.min(need, s.qty);
+      qSum += (s.quality ?? 1) * take;
+      qCount += take;
+      need -= take;
+    }
+  }
+  const quality = qCount > 0 ? Math.max(1, Math.min(5, Math.round(qSum / qCount))) : 1;
+
+  for (const i of r.input) Bag.removeFromBag(state.bag, i.id, i.qty);
+
+  state.crafting = {
+    recipeId,
+    quality,
+    doneAt: absoluteMinutes(state.day, state.time) + r.minutes,
+    startDay: state.day
+  };
+  Sound.play('click');
+  UI.toast(`${outName(r)} 开始加工，${Math.round(r.minutes / 60 * 10) / 10} 小时后完成`, 'good');
+  save();
+  openCraftPanel();
+}
+
+function collectCraft(): void {
+  const job = state.crafting;
+  if (!job) return;
+  if (absoluteMinutes(state.day, state.time) < job.doneAt) {
+    UI.toast('还没做好', 'bad');
+    return;
+  }
+  const r = recipeById(job.recipeId);
+  if (!r) { state.crafting = null; return; }
+
+  const stack = Bag.makeStack(r.out, 1, job.quality);
+  if (!Bag.canFit(state.bag, stack)) {
+    UI.toast('背包满了', 'bad');
+    return;
+  }
+  Bag.addToBag(state.bag, stack);
+  state.crafting = null;
+  Sound.play('levelup');
+  UI.toast(`取走了 ${outName(r)}（${'★'.repeat(job.quality)}）`, 'good');
+  UI.resetHotbarCache();
+  save();
+  openCraftPanel();
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -1133,6 +1266,7 @@ function tryInteract(): void {
   if (tgt?.kind === 'ladder') { useLadder(tx, ty); return; }
   if (tgt?.kind === 'bed') { askSleep(); return; }
   if (tgt?.kind === 'shelf') { openDex(); return; }
+  if (tgt?.kind === 'bench') { openCraftPanel(); return; }
 
   // 优先：面朝的村民（只在农场有村民）
   if (!isIndoor(state.scene)) {

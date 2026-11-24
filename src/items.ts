@@ -105,6 +105,14 @@ reg({ id: 'prod.egg', kind: 'product', name: '鸡蛋', icon: '🥚', max: 99, de
 reg({ id: 'prod.milk', kind: 'product', name: '牛奶', icon: '🥛', max: 99, desc: '牛的产出 · 心情决定品质', price: 160 });
 reg({ id: 'prod.wool', kind: 'product', name: '羊毛', icon: '🧶', max: 99, desc: '羊的产出 · 每隔几天剪一次', price: 280 });
 
+/* ---------------- 加工品（加工台产出） ---------------- */
+
+reg({ id: 'craft.cheese', kind: 'product', name: '奶酪', icon: '🧀', max: 99, desc: '牛奶加工而成', price: 420 });
+reg({ id: 'craft.butter', kind: 'product', name: '黄油', icon: '🧈', max: 99, desc: '2 份牛奶加工而成', price: 780 });
+reg({ id: 'craft.yarn', kind: 'product', name: '毛线', icon: '🪡', max: 99, desc: '羊毛纺成，将来可做衣服', price: 520 });
+reg({ id: 'craft.jam', kind: 'product', name: '草莓酱', icon: '🍓', max: 99, desc: '2 份草莓熬成', price: 1900 });
+reg({ id: 'craft.ketchup', kind: 'product', name: '番茄酱', icon: '🥫', max: 99, desc: '2 份番茄熬成', price: 880 });
+
 /* ---------------- 查询 ---------------- */
 
 export function getDef(id: string): ItemDef | undefined {

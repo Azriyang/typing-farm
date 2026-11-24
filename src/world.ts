@@ -42,7 +42,7 @@ export type TileId = (typeof T)[keyof typeof T];
 
 /* ---------------- 室内家具 ---------------- */
 
-export type FurnitureKind = 'bed' | 'shelf' | 'table' | 'trough' | 'nest' | 'hay' | 'rug';
+export type FurnitureKind = 'bed' | 'shelf' | 'table' | 'trough' | 'nest' | 'hay' | 'rug' | 'bench';
 
 export interface Furniture {
   kind: FurnitureKind;
@@ -59,6 +59,7 @@ export const FURNITURE: Furniture[] = [
   { kind: 'bed', tx: 18, ty: 7, w: 2, h: 3, scene: 'house' },
   { kind: 'shelf', tx: 30, ty: 7, w: 2, h: 1, scene: 'house' },
   { kind: 'table', tx: 23, ty: 12, w: 3, h: 2, scene: 'house' },
+  { kind: 'bench', tx: 27, ty: 12, w: 2, h: 1, scene: 'house' },
   { kind: 'rug', tx: 21, ty: 10, w: 4, h: 3, scene: 'house' },
   // 鸡舍
   { kind: 'nest', tx: 19, ty: 7, w: 3, h: 1, scene: 'coop' },
@@ -502,7 +503,7 @@ export function unlockArea(k: number): void {
 /* ---------------- 交互目标 ---------------- */
 
 export interface Target {
-  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf' | 'ladder';
+  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf' | 'ladder' | 'bench';
   tx: number;
   ty: number;
   plotIndex: number;
@@ -533,6 +534,7 @@ export function targetAt(tx: number, ty: number): Target | null {
   if (f) {
     if (f.kind === 'bed') return { kind: 'bed', tx, ty, plotIndex: -1 };
     if (f.kind === 'shelf') return { kind: 'shelf', tx, ty, plotIndex: -1 };
+    if (f.kind === 'bench') return { kind: 'bench', tx, ty, plotIndex: -1 };
   }
   // 农场专属：物件与耕地
   if (scene === 'farm') {

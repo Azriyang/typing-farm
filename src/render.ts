@@ -587,8 +587,12 @@ function drawIndoorLighting(c: Ctx, scene: string) {
 }
 
 function drawFurniture(c: Ctx, scene: string) {
-  for (const f of FURNITURE) {
-    if (f.scene !== scene) continue;
+  // 地毯是**地面装饰**，必须先画——否则会盖住放在它上面的桌子
+  const ordered = FURNITURE
+    .filter((f) => f.scene === scene)
+    .sort((a, b) => (a.kind === 'rug' ? 0 : 1) - (b.kind === 'rug' ? 0 : 1));
+
+  for (const f of ordered) {
     const x = f.tx * TILE, y = f.ty * TILE;
     const w = f.w * TILE, h = f.h * TILE;
 

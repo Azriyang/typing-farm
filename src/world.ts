@@ -59,7 +59,7 @@ export const FURNITURE: Furniture[] = [
   // 住宅
   { kind: 'bed', tx: 18, ty: 7, w: 2, h: 3, scene: 'house' },
   { kind: 'shelf', tx: 30, ty: 7, w: 2, h: 1, scene: 'house' },
-  { kind: 'table', tx: 23, ty: 12, w: 3, h: 2, scene: 'house' },
+  { kind: 'table', tx: 21, ty: 10, w: 3, h: 2, scene: 'house' },
   { kind: 'bench', tx: 27, ty: 12, w: 2, h: 1, scene: 'house' },
   { kind: 'stove', tx: 30, ty: 13, w: 2, h: 1, scene: 'house' },
   { kind: 'chest', tx: 18, ty: 14, w: 2, h: 1, scene: 'house' },

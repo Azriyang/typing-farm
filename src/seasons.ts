@@ -87,6 +87,74 @@ export function isInSeason(crop: CropDef, season: Season): boolean {
   return crop.season === season;
 }
 
+/* ---------------- 节日 ---------------- */
+
+export type FestivalId = 'sowing' | 'summer' | 'harvest' | 'star';
+
+export interface FestivalDef {
+  id: FestivalId;
+  name: string;
+  icon: string;
+  /** 一句话介绍 */
+  intro: string;
+  /** 效果说明 */
+  effect: string;
+}
+
+/** 每季最后一天是节日 */
+export const FESTIVALS: Record<Season, FestivalDef> = {
+  spring: {
+    id: 'sowing', name: '播种祭', icon: '🌱',
+    intro: '全村一起下种的日子，种子铺也打折。',
+    effect: '种子半价'
+  },
+  summer: {
+    id: 'summer', name: '夏日祭', icon: '🎆',
+    intro: '白天最长的一天，大家的劲头都足。',
+    effect: '体力消耗减半'
+  },
+  autumn: {
+    id: 'harvest', name: '丰收祭', icon: '🌾',
+    intro: '一年的收成在这天被称量。',
+    effect: '出货价格 +50%'
+  },
+  winter: {
+    id: 'star', name: '星霜祭', icon: '✨',
+    intro: '雪夜里抬头看星星的旧俗。',
+    effect: '所有产出品质 +1 星'
+  }
+};
+
+/** 节日只在每季最后一天 */
+export function festivalOfDay(day: number): FestivalDef | null {
+  return dayInSeason(day) === SEASON_LEN ? FESTIVALS[seasonOfDay(day)] : null;
+}
+
+/** 明天是否节日（睡前提示用） */
+export function festivalTomorrow(day: number): FestivalDef | null {
+  return festivalOfDay(day + 1);
+}
+
+export interface FestivalEffects {
+  seedMult: number;
+  staminaMult: number;
+  sellMult: number;
+  qualityBonus: number;
+  festival: FestivalDef | null;
+}
+
+/** 当天的节日修正；非节日全部为中性值 */
+export function festivalEffects(day: number): FestivalEffects {
+  const f = festivalOfDay(day);
+  return {
+    seedMult: f?.id === 'sowing' ? 0.5 : 1,
+    staminaMult: f?.id === 'summer' ? 0.5 : 1,
+    sellMult: f?.id === 'harvest' ? 1.5 : 1,
+    qualityBonus: f?.id === 'star' ? 1 : 0,
+    festival: f
+  };
+}
+
 /* ---------------- 色板 ---------------- */
 
 export interface Palette {

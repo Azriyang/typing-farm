@@ -6,7 +6,7 @@ import { CFG } from './config';
 import { TOOLS } from './tools';
 import { getDef } from './items';
 import { usedSlots } from './items';
-import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON } from './seasons';
+import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON, festivalOfDay } from './seasons';
 import type { GameState } from './types';
 import type { TypingSession } from './typing';
 
@@ -106,6 +106,18 @@ export function syncHud(state: GameState): void {
   $('hud-season').textContent = SEASON_LABEL[season];
   $('hud-season-ico').textContent = SEASON_ICON[season];
   $('hud-season-day').textContent = `第${dayInSeason(state.day)}天`;
+
+  const fest = festivalOfDay(state.day);
+  const festEl = $('hud-festival');
+  if (fest) {
+    festEl.classList.remove('hidden');
+    $('hud-festival-ico').textContent = fest.icon;
+    $('hud-festival-name').textContent = fest.name;
+    festEl.title = `${fest.intro}（${fest.effect}）`;
+  } else {
+    festEl.classList.add('hidden');
+  }
+
   $('hud-coins').textContent = String(state.coins);
   $('hud-stamina').textContent = String(Math.max(0, Math.round(state.stamina)));
   $('hud-bag').textContent = `${usedSlots(state.bag)}/${state.bagSize}`;

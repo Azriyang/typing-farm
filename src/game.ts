@@ -10,7 +10,7 @@ import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase, a
 import * as UI from './ui';
 import {
   seasonOfDay, rollWeather, weatherWaters, growthMultiplier, isInSeason,
-  SEASON_LABEL, SEASON_ICON
+  SEASON_LABEL, SEASON_ICON, festivalOfDay, festivalTomorrow, festivalEffects
 } from './seasons';
 import {
   buildMap, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
@@ -382,7 +382,8 @@ function actionCost(info: ActionInfo): { stamina: number; time: number } {
     base = { stamina: CFG.COST.harvest.stamina, time: CFG.COST.harvest.time };
   }
   const night = state.time >= CFG.NIGHT_FROM;
-  return { stamina: Math.max(1, Math.round(base.stamina * (night ? 2 : 1))), time: base.time };
+  const mult = (night ? 2 : 1) * festivalEffects(state.day).staminaMult;
+  return { stamina: Math.max(1, Math.round(base.stamina * mult)), time: base.time };
 }
 
 function checkComboHeal(): void {
@@ -450,7 +451,8 @@ function applyAction(p: Pending, perfect: boolean): void {
       const cropId = plot.crop;
       if (!cropId) return;
       const def = CROPS[cropId];
-      const q = Math.min(5, plot.quality + (perfect ? 1 : 0));
+      const fest = festivalEffects(state.day);
+      const q = Math.min(5, plot.quality + (perfect ? 1 : 0) + fest.qualityBonus);
       Bag.addToBag(state.bag, Bag.makeStack(Bag.cropItemId(cropId), 1, q));
       state.todayHarvest++;
       state.stats.harvested++;
@@ -650,7 +652,7 @@ function finishReel(perfect: boolean): void {
     fishing.phase = 'idle';
     return;
   }
-  const q = Math.min(5, fishing.quality + (perfect ? 1 : 0));
+  const q = Math.min(5, fishing.quality + (perfect ? 1 : 0) + festivalEffects(state.day).qualityBonus);
   const leftover = Bag.addToBag(state.bag, Bag.makeStack(`fish.${fish.id}`, 1, q));
 
   if (leftover > 0) {
@@ -905,7 +907,8 @@ const ANIMAL_COST: Record<AnimalAction, { stamina: number; time: number }> = {
 function animalCost(action: AnimalAction): { stamina: number; time: number } {
   const base = ANIMAL_COST[action];
   const night = state.time >= CFG.NIGHT_FROM;
-  return { stamina: Math.max(1, Math.round(base.stamina * (night ? 2 : 1))), time: base.time };
+  const mult = (night ? 2 : 1) * festivalEffects(state.day).staminaMult;
+  return { stamina: Math.max(1, Math.round(base.stamina * mult)), time: base.time };
 }
 
 function buildAnimalWords(action: AnimalAction): Word[] {
@@ -1001,7 +1004,7 @@ function applyAnimalAction(p: Pending, perfect: boolean): void {
     case 'collect':
     case 'milk': {
       if (!a.productReady) return;
-      const q = Math.min(5, happinessQuality(a.happiness) + (perfect ? 1 : 0));
+      const q = Math.min(5, happinessQuality(a.happiness) + (perfect ? 1 : 0) + festivalEffects(state.day).qualityBonus);
       Bag.addToBag(state.bag, Bag.makeStack(def.productId, 1, q));
       a.productReady = false;
       a.happiness = Math.min(100, a.happiness + 2);
@@ -1034,10 +1037,11 @@ function buyAnimal(kind: AnimalKind): void {
 interface SellLine { stack: ItemStack; total: number }
 
 function sellLines(): SellLine[] {
+  const mult = festivalEffects(state.day).sellMult;
   const lines: SellLine[] = [];
   for (const s of state.bag) {
     if (!s || !isSellable(s)) continue;
-    lines.push({ stack: s, total: sellPrice(s) * s.qty });
+    lines.push({ stack: s, total: Math.round(sellPrice(s) * s.qty * mult) });
   }
   return lines;
 }
@@ -1057,10 +1061,16 @@ function openBin(): void {
       <span class="v">${l.total} G</span></div>`;
   }).join('');
 
+  const fest = festivalEffects(state.day);
+  const festNote = fest.sellMult > 1
+    ? `<p class="season-note">${fest.festival?.icon ?? ''} <b>${fest.festival?.name ?? ''}</b>进行中 —— 今天出货价格 +${Math.round((fest.sellMult - 1) * 100)}%！</p>`
+    : '';
+
   UI.showModal(
     '出货箱',
     `${rows}<hr class="report-hr">
      <div class="report-total"><span>合计</span><span>${total} G</span></div>
+     ${festNote}
      <p class="dim">出货会卖掉背包里所有作物、鱼和动物产物。</p>`,
     [
       { label: '算了', cls: 'ghost', onClick: () => UI.hideModal() },
@@ -1070,11 +1080,12 @@ function openBin(): void {
 }
 
 function sellAll(): void {
+  const mult = festivalEffects(state.day).sellMult;
   let total = 0;
   let count = 0;
   for (const s of state.bag) {
     if (!s || !isSellable(s)) continue;
-    total += sellPrice(s) * s.qty;
+    total += Math.round(sellPrice(s) * s.qty * mult);
     count += s.qty;
   }
   if (count === 0) return;
@@ -1095,25 +1106,34 @@ function sellAll(): void {
 
 /* ---------------- 商店 ---------------- */
 
+/** 种子实价（含播种祭半价） */
+function seedPrice(id: CropId): number {
+  return Math.max(1, Math.round(CROPS[id].seed * festivalEffects(state.day).seedMult));
+}
+
 function openShop(): void {
   const curSeason = seasonOfDay(state.day);
+  const fest = festivalEffects(state.day);
   const seedRows = CROP_ORDER.map((id) => {
     const c = CROPS[id];
-    const cant = state.coins < c.seed ? ' cant' : '';
+    const price = seedPrice(id);
+    const cant = state.coins < price ? ' cant' : '';
     const stock = Bag.countInBag(state.bag, Bag.seedItemId(id));
     const inSeason = c.season === curSeason;
     const seasonTag = inSeason
       ? `<span class="season-tag in">${SEASON_ICON[c.season]} 当季</span>`
       : `<span class="season-tag off">${SEASON_ICON[c.season]} ${SEASON_LABEL[c.season]}季 · 慢一倍</span>`;
+    const saleTag = fest.seedMult < 1 ? `<span class="season-tag in">半价</span>` : '';
+    const oldPrice = fest.seedMult < 1 ? `<s class="dm">${c.seed}G</s> ` : '';
     return `<div class="shop-row${cant}">
       <div>
-        <div class="nm">${c.emoji} ${c.zh}种子 <span class="dm">${c.en}</span> ${seasonTag}</div>
+        <div class="nm">${c.emoji} ${c.zh}种子 <span class="dm">${c.en}</span> ${seasonTag}${saleTag}</div>
         <div class="dt">${c.days}天成熟 · 售${c.price}G · 持有 ${stock}</div>
       </div>
-      <div class="pr">${c.seed}G</div>
+      <div class="pr">${oldPrice}${price}G</div>
       <div class="buy-group">
-        <button class="btn small" data-seed="${id}" data-n="1" ${state.coins < c.seed ? 'disabled' : ''}>1</button>
-        <button class="btn small ghost" data-seed="${id}" data-n="5" ${state.coins < c.seed * 5 ? 'disabled' : ''}>5</button>
+        <button class="btn small" data-seed="${id}" data-n="1" ${state.coins < price ? 'disabled' : ''}>1</button>
+        <button class="btn small ghost" data-seed="${id}" data-n="5" ${state.coins < price * 5 ? 'disabled' : ''}>5</button>
       </div>
     </div>`;
   }).join('');
@@ -1211,7 +1231,7 @@ function openShop(): void {
 
 function buySeed(id: CropId, n: number): void {
   const c = CROPS[id];
-  const cost = c.seed * n;
+  const cost = seedPrice(id) * n;
   if (state.coins < cost) { UI.toast('金币不够', 'bad'); return; }
   const item = Bag.makeStack(Bag.seedItemId(id), n);
   if (!Bag.canFit(state.bag, item)) { UI.toast('背包放不下了', 'bad'); return; }
@@ -1774,6 +1794,15 @@ function sleep(fainted = false): void {
     ? `<p class="season-note">${SEASON_ICON[newSeason]} <b>${SEASON_LABEL[newSeason]}天来了！</b>当季作物正常生长，反季的会慢一倍。</p>`
     : '';
 
+  // 明天是节日 → 预告；今天是节日 → 小结
+  const festNext = festivalTomorrow(reportDay);
+  const festToday = festivalOfDay(reportDay);
+  const festNote = festNext
+    ? `<p class="season-note">${festNext.icon} 明天是 <b>${festNext.name}</b>！${festNext.intro}（${festNext.effect}）</p>`
+    : festToday
+      ? `<p class="dim">${festToday.icon} 今天的${festToday.name}过去了，明年再见。</p>`
+      : '';
+
   UI.showModal(
     fainted ? `第 ${reportDay} 天 · 累倒了` : `第 ${reportDay} 天 · 晚安`,
     `${fainted ? '<p style="color:#c0392b;font-weight:700">你在田里睡着了，邻居把你送回了家。</p>' : ''}
@@ -1783,7 +1812,7 @@ function sleep(fainted = false): void {
        <span class="k">持有金币</span><span class="v">${state.coins} G</span>
        <span class="k">连击纪录</span><span class="v">×${state.stats.maxCombo}</span>
      </div>
-     ${seasonNote}${weatherNote}`,
+     ${festNote}${seasonNote}${weatherNote}`,
     [{ label: `开始第 ${state.day} 天`, cls: 'green', onClick: () => UI.hideModal() }]
   );
 }
@@ -1993,6 +2022,10 @@ function startGame(fresh: boolean): void {
   UI.syncHud(state);
   UI.resetTypingCache();
 
+  // 读档/开工时若正逢节日，补一条提示（睡前预告过的话这里只是重申）
+  const fest = festivalOfDay(state.day);
+  if (fest) window.setTimeout(() => UI.toast(`${fest.icon} 今天是${fest.name}：${fest.effect}`, 'good'), 300);
+
   if (fresh) showIntro();
 }
 
@@ -2065,6 +2098,13 @@ function setupTitle(): void {
          <li>每种作物有适宜季节，当季正常长，<b>反季慢一倍</b></li>
          <li>春种萝卜/土豆/草莓，夏种番茄/玉米，秋种卷心菜/南瓜，冬种菠菜</li>
          <li>春雨多、冬飘雪；雨自动浇灌，雪不会，冬天要手动浇水</li>
+       </ul>
+       <h3>节日</h3>
+       <ul>
+         <li>每季最后一天（第 8 / 16 / 24 / 32 天）是节日，只看当天有效</li>
+         <li>🌱 播种祭：种子半价 &nbsp; 🎆 夏日祭：体力消耗减半</li>
+         <li>🌾 丰收祭：出货 +50% &nbsp; ✨ 星霜祭：所有产出品质 +1 星</li>
+         <li>睡前会预告明天的节日，节日当天 HUD 上有徽章</li>
        </ul>
        <h3>一天的循环</h3>
        <ul>

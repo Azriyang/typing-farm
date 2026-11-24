@@ -2107,9 +2107,9 @@ function renderWords(): void {
       <div class="lb-item"><span class="lb-k">今日新词</span><b>${ls.todayNew}<span class="lb-sub">/${ls.quota}</span></b></div>
     </div>
     <p class="dim cov-note">
-      「掌握」= 在 <b>3 个不同天</b>各打对这个词。同一天重复打只算一次——
-      所以照着屏幕抄是没有用的。
-      见过的词会被<b>挖空</b>（只留首字母），逼你从中文想起英文。
+      「掌握」= 在 <b>3 个不同天</b>各打对这个词。<b>同一天重复打只算一次</b>——
+      所以一天连刷没用，得隔天再遇见几次才记得住。
+      学过的词会被优先复习；每天最多引入 ${ls.quota} 个新词，睡一觉重置。
     </p>`;
 
   const cet4Row = `

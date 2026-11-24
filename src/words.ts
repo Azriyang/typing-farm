@@ -13,7 +13,7 @@ import type { Word } from './types';
 import { storage } from './platform';
 import { CET4_WORDS } from './cet4';
 import type { WordEntry } from './cet4';
-import { hasSeen, isMastered, remainingNewQuota, markSeen, maskFor } from './learning';
+import { hasSeen, isMastered, remainingNewQuota, markSeen } from './learning';
 
 export type { WordEntry };
 
@@ -539,14 +539,11 @@ export function makeWord(cat: WordCategory, bandIndex: number, zh: string): Word
   const entry = pickEntry(cat, bandIndex);
   // 优先用词条自带的释义，其次查内置词义表，最后退回动作名
   const meaning = entry.zh || WORD_ZH[entry.en] || zh;
-  // 先按「遇到之前的」状态决定提示（首次要完整显示），再记录这次遇到
-  const mask = maskFor(entry.en);
   markSeen(entry.en);
   return {
     text: entry.en,
     zh: meaning,
-    diff: difficulty(entry.en),
-    mask
+    diff: difficulty(entry.en)
   };
 }
 

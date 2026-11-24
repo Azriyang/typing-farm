@@ -114,17 +114,19 @@ export function markWrong(word: string): void {
 }
 
 /**
- * 这个字现在该给多少提示：
- * - 0：从没遇过 → 完整显示（学习阶段）
- * - 1~2：见过 → 只给首字母，其余挖空（回忆测试）
- * - >= MASTER_DAYS：已掌握 → 完整显示（复习时不该再卡）
+ * 说明：这里**不做挖空**。
+ * 本作是打字游戏，玩家的任务始终是「把看到的词打出来」；
+ * 挖空会把它变成拼写测试，超出设定且难度跳变。
+ * 记忆机制靠「跨天重复」实现（见 markCorrect）。
  */
-export function maskFor(word: string): number {
-  const p = progress[word];
-  if (!p || p.seen === 0) return 0;
-  if (p.days >= MASTER_DAYS) return 0;
-  // 挖空起点：保留首字母
-  return 1;
+
+/**
+ * 这个字现在该给多少提示。
+ * 始终完整显示——保持「照着打」的一贯体验。
+ * 保留该函数是为了以后要加可选「挑战模式」时有个挂点。
+ */
+export function maskFor(_word: string): number {
+  return 0;
 }
 
 /* ---------------- 统计 ---------------- */

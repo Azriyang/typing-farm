@@ -99,17 +99,21 @@ export interface ResNode {
 
 /* ---------------- 动物 ---------------- */
 
-export type AnimalKind = 'chicken' | 'cow';
+export type AnimalKind = 'chicken' | 'cow' | 'sheep';
 
 export interface Animal {
   id: string;
   kind: AnimalKind;
+  /** 玩家起的名字（可空） */
+  name?: string;
   /** 心情 0~100，决定产物品质 */
   happiness: number;
   fedToday: boolean;
   pettedToday: boolean;
   /** 蛋 / 奶是否可收 */
   productReady: boolean;
+  /** 羊专用：羊毛生长度 0~100，满 100 可剪 */
+  wool: number;
   x: number;
   y: number;
   dir: Dir;
@@ -201,6 +205,8 @@ export interface GameState {
   nodes: ResNode[];
   animals: Animal[];
   villagers: Villager[];
+  /** 已解锁的耕地区域数（1 起） */
+  farmUnlocked: number;
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

@@ -780,3 +780,5 @@ html, body {
   color: #8a3a50;
   margin: 4px 0 8px;
 }
+/* 羊毛进度条与心情条区分 */
+.happy-bar.wool i { background: linear-gradient(90deg, #d8cbb8, #b8a892); }

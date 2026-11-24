@@ -14,7 +14,8 @@ import {
 } from './seasons';
 import {
   buildMap, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
-  TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea
+  TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
+  unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS
 } from './world';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
@@ -25,7 +26,7 @@ import {
 } from './tools';
 import {
   ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals, animalNear,
-  animalById, happinessQuality, settleAnimalsOvernight
+  animalById, happinessQuality, settleAnimalsOvernight, isProductReady
 } from './animals';
 import {
   VILLAGER_DEFS, VILLAGER_ORDER, createVillager, updateVillagers, villagerNear,
@@ -53,7 +54,7 @@ let lastTs = 0;
 const keys = new Set<string>();
 
 interface Pending {
-  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'chat';
+  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'chat';
   tool: ToolId | null;
   plots: number[];
   nodeKey: string | null;
@@ -116,7 +117,7 @@ const session = new TypingSession({
       return;
     }
 
-    if (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet') {
+    if (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear') {
       if (r.perfect) {
         state.combo++;
         state.stats.maxCombo = Math.max(state.stats.maxCombo, state.combo);
@@ -171,7 +172,7 @@ const session = new TypingSession({
       return;
     }
 
-    if (p && (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet')) {
+    if (p && (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear')) {
       state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
       UI.toast('超时了……动物歪着头看你', 'bad');
       if (state.stamina <= 0) { faint(); return; }
@@ -233,7 +234,19 @@ function normalizeState(s: GameState): void {
   if (typeof s.equipSlot !== 'number') s.equipSlot = 0;
   if (!Array.isArray(s.nodes)) s.nodes = makeNodes();
   if (!Array.isArray(s.animals)) s.animals = [];
+  for (const a of s.animals) {
+    if (typeof a.wool !== 'number') a.wool = a.kind === 'sheep' ? 100 : 0;
+  }
   if (!Array.isArray(s.villagers)) s.villagers = VILLAGER_ORDER.map((id) => createVillager(id));
+
+  // 旧存档的 plots 只有第一块地，补齐到全部
+  if (!Array.isArray(s.plots)) s.plots = [];
+  while (s.plots.length < PLOT_COUNT) {
+    s.plots.push({ tilled: false, crop: null, stage: 0, watered: false, quality: 1 });
+  }
+  if (s.plots.length > PLOT_COUNT) s.plots.length = PLOT_COUNT;
+  // 旧存档没有这个字段 → 只解锁第一块（与它的 plots 数量一致）
+  if (typeof s.farmUnlocked !== 'number') s.farmUnlocked = 1;
 }
 
 function newState(): GameState {
@@ -277,6 +290,7 @@ function newState(): GameState {
     nodes: makeNodes(),
     animals: [],
     villagers: VILLAGER_ORDER.map((id) => createVillager(id)),
+    farmUnlocked: 1,
     autoSwitch: true,
     todayCleared: 0
   };
@@ -343,16 +357,19 @@ function loadSave(): boolean {
     if (!raw) return false;
     const data = JSON.parse(raw) as GameState & { tool?: number; seeds?: Record<string, number>; basket?: Array<{ crop: CropId; quality: number }> };
 
-    if (data.version === 2 && Array.isArray(data.plots) && data.plots.length === PLOT_COUNT) {
+    if (data.version === 2 && Array.isArray(data.plots) && data.plots.length > 0) {
       state = data;
       normalizeState(state);
+      restoreUnlockedAreas();
       syncBlockers(state);
       return true;
     }
 
     // v1 → v2 迁移
-    if (Array.isArray(data.plots) && data.plots.length === PLOT_COUNT) {
+    if (Array.isArray(data.plots) && data.plots.length > 0) {
       state = migrateV1(data);
+      normalizeState(state);
+      restoreUnlockedAreas();
       save();
       return true;
     }
@@ -360,6 +377,11 @@ function loadSave(): boolean {
   } catch {
     return false;
   }
+}
+
+/** 读档后把已解锁的耕地重新铺成泥土（地形是运行时生成的） */
+function restoreUnlockedAreas(): void {
+  for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
 }
 
 interface LegacySave {
@@ -752,6 +774,8 @@ function collectPlots(info: ActionInfo): number[] {
     const ny = ty + dy * step;
     const pi = plotIndexOf(nx, ny);
     if (pi < 0) break;
+    // 不跨到未解锁的区域
+    if (!areaUnlocked(plotAreaOf(pi), state.farmUnlocked)) break;
     if (!state.plots[pi].tilled && info.kind === 'till') out.push(pi);
     else if (state.plots[pi].tilled && state.plots[pi].crop && !state.plots[pi].watered && info.kind === 'water') out.push(pi);
     else break;
@@ -868,6 +892,10 @@ function tryInteract(): void {
   if (info.kind === 'door') { openHouse(); return; }
   if (info.kind === 'bin') { openBin(); return; }
   if (info.kind === 'order') { openShop(); return; }
+  if (info.kind === 'locked') {
+    UI.toast('这块地还没开垦，去订购箱买地', 'bad');
+    return;
+  }
 
   // 自动切换到正确工具
   if (info.tool && heldTool(state) !== info.tool) {
@@ -935,13 +963,18 @@ function ensureSeedInHand(): boolean {
 
 /* ---------------- 动物照料 ---------------- */
 
-type AnimalAction = 'feed' | 'collect' | 'milk' | 'pet';
+type AnimalAction = 'feed' | 'collect' | 'milk' | 'pet' | 'shear';
 
 const ANIMAL_COST: Record<AnimalAction, { stamina: number; time: number }> = {
   feed: { stamina: 2, time: 10 },
   collect: { stamina: 2, time: 5 },
   milk: { stamina: 4, time: 15 },
-  pet: { stamina: 1, time: 5 }
+  pet: { stamina: 1, time: 5 },
+  shear: { stamina: 4, time: 20 }
+};
+
+const ACTION_LABEL: Record<AnimalAction, string> = {
+  feed: '喂食', collect: '捡蛋', milk: '挤奶', pet: '抚摸', shear: '剪毛'
 };
 
 function animalCost(action: AnimalAction): { stamina: number; time: number } {
@@ -957,15 +990,40 @@ function buildAnimalWords(action: AnimalAction): Word[] {
     case 'collect': return makeWords('animal', 1, '捡蛋', 1);
     case 'milk': return makeWords('animal', 0, '挤奶', 3);
     case 'pet': return makeWords('animal', 0, '抚摸', 1);
+    // 剪毛：三连短词，像剪刀一下下的节奏
+    case 'shear': return makeWords('animal', 0, '剪毛', 3);
   }
+}
+
+/** 该动物当前的「取产出」动作名与类型 */
+function produceAction(a: Animal): { action: AnimalAction; label: string } {
+  if (a.kind === 'sheep') return { action: 'shear', label: '剪毛' };
+  if (a.kind === 'chicken') return { action: 'collect', label: '捡蛋' };
+  return { action: 'milk', label: '挤奶' };
+}
+
+function animalTitle(a: Animal): string {
+  const def = ANIMAL_DEFS[a.kind];
+  return a.name ? `${a.name}` : def.name;
 }
 
 function openAnimalPanel(a: Animal): void {
   const def = ANIMAL_DEFS[a.kind];
   const q = happinessQuality(a.happiness);
-  const collectLabel = a.kind === 'chicken' ? '捡蛋' : '挤奶';
-  const collectAction: AnimalAction = a.kind === 'chicken' ? 'collect' : 'milk';
+  const ready = isProductReady(a);
+  const produce = produceAction(a);
   const happyPct = Math.round(a.happiness);
+
+  // 羊显示羊毛生长度，其它显示「今天有没有产物」
+  const productRow = a.kind === 'sheep'
+    ? `<div class="as-row"><span class="k">羊毛</span>
+         <span class="happy-bar wool"><i style="width:${Math.round(a.wool)}%"></i></span>
+         <span class="v">${ready ? '✓ 可剪' : Math.round(a.wool) + '%'}</span></div>`
+    : `<div class="as-row"><span class="k">${def.productName}</span><span class="v">${ready ? '✓ 可收获' : '— 喂了明天才有'}</span></div>`;
+
+  const tip = a.kind === 'sheep'
+    ? '羊毛长满了才能剪。喂食让羊毛长得更快，心情决定羊毛品质。'
+    : `心情越好，${def.productName}品质越高。喂食 + 抚摸涨心情，饿着会掉。`;
 
   const status = `
     <div class="animal-status">
@@ -973,19 +1031,44 @@ function openAnimalPanel(a: Animal): void {
         <span class="happy-bar"><i style="width:${happyPct}%"></i></span>
         <span class="v">${happyPct} · ${'★'.repeat(q)}</span></div>
       <div class="as-row"><span class="k">喂食</span><span class="v">${a.fedToday ? '✓ 已喂' : '✗ 还没喂'}</span></div>
-      <div class="as-row"><span class="k">${def.productName}</span><span class="v">${a.productReady ? '✓ 可收获' : '— 喂了明天才有'}</span></div>
+      ${productRow}
       <div class="as-row"><span class="k">抚摸</span><span class="v">${a.pettedToday ? '✓ 已抚摸' : '✗ 还没摸'}</span></div>
     </div>
-    <p class="dim">心情越好，${def.productName}品质越高。喂食 + 抚摸涨心情，饿着会掉。</p>`;
+    <p class="dim">${tip}</p>`;
 
   UI.showModal(
-    `${def.icon} ${def.name}`,
+    `${def.icon} ${animalTitle(a)}`,
     status,
     [
       { label: a.fedToday ? '已喂食' : '喂食', cls: a.fedToday ? 'ghost' : 'green', onClick: () => { if (!a.fedToday) { UI.hideModal(); startAnimalAction(a, 'feed'); } } },
-      { label: a.productReady ? collectLabel : '无产物', cls: a.productReady ? 'green' : 'ghost', onClick: () => { if (a.productReady) { UI.hideModal(); startAnimalAction(a, collectAction); } } },
+      { label: ready ? produce.label : '无产物', cls: ready ? 'green' : 'ghost', onClick: () => { if (ready) { UI.hideModal(); startAnimalAction(a, produce.action); } } },
       { label: a.pettedToday ? '已抚摸' : '抚摸', cls: a.pettedToday ? 'ghost' : '', onClick: () => { if (!a.pettedToday) { UI.hideModal(); startAnimalAction(a, 'pet'); } } },
+      { label: '改名', cls: 'ghost', onClick: () => renameAnimal(a) },
       { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+}
+
+/** 给动物起名 */
+function renameAnimal(a: Animal): void {
+  const def = ANIMAL_DEFS[a.kind];
+  const cur = (a.name ?? '').replace(/"/g, '&quot;');
+  UI.showModal(
+    `给${def.name}起名`,
+    `<p class="dim">起个名字，方便你认出它。</p>
+     <input id="animal-name" class="inp" maxlength="8" placeholder="${def.name}" value="${cur}">`,
+    [
+      { label: '取消', cls: 'ghost', onClick: () => openAnimalPanel(a) },
+      {
+        label: '确定', cls: 'green', onClick: () => {
+          const el = document.getElementById('animal-name') as HTMLInputElement | null;
+          const name = (el?.value ?? '').trim().slice(0, 8);
+          a.name = name || undefined;
+          save();
+          UI.toast(name ? `它叫 ${name} 了` : '取消了名字', 'good');
+          openAnimalPanel(a);
+        }
+      }
     ]
   );
 }
@@ -998,7 +1081,7 @@ function startAnimalAction(a: Animal, action: AnimalAction): void {
     openAnimalPanel(a);
     return;
   }
-  if (action === 'collect' || action === 'milk') {
+  if (action === 'collect' || action === 'milk' || action === 'shear') {
     const def = ANIMAL_DEFS[a.kind];
     const probe = Bag.makeStack(def.productId, 1, happinessQuality(a.happiness));
     if (!Bag.canFit(state.bag, probe)) {
@@ -1008,12 +1091,12 @@ function startAnimalAction(a: Animal, action: AnimalAction): void {
     }
   }
 
-  const label = action === 'feed' ? '喂食' : action === 'pet' ? '抚摸' : action === 'collect' ? '捡蛋' : '挤奶';
+  const label = ACTION_LABEL[action];
   pending = {
     kind: action, tool: null, plots: [], nodeKey: null,
     animalId: a.id, stamina: cost.stamina, time: cost.time, label
   };
-  currentLabel = `${label} · ${ANIMAL_DEFS[a.kind].name}`;
+  currentLabel = `${label} · ${animalTitle(a)}`;
   UI.resetTypingCache();
   session.start(buildAnimalWords(action), 0, 1, performance.now());
 }
@@ -1042,15 +1125,25 @@ function applyAnimalAction(p: Pending, perfect: boolean): void {
       Sound.play('click');
       break;
     case 'collect':
-    case 'milk': {
-      if (!a.productReady) return;
+    case 'milk':
+    case 'shear': {
+      if (!isProductReady(a)) return;
       const q = Math.min(5, happinessQuality(a.happiness) + (perfect ? 1 : 0) + festivalEffects(state.day).qualityBonus);
       Bag.addToBag(state.bag, Bag.makeStack(def.productId, 1, q));
-      a.productReady = false;
+
+      if (a.kind === 'sheep') {
+        a.wool = 0;
+        // 剪完毛的羊看起来清爽了
+        burst(cx, cy - 12, '#f7f4ec', 16, 1.2);
+        floatText(cx, cy - 34, `羊毛 ${'★'.repeat(q)}`, '#fff2b8', 15);
+      } else {
+        a.productReady = false;
+        burst(cx, cy - 10, '#f5f0e6', 12);
+        floatText(cx, cy - 34, `${def.productName} ${'★'.repeat(q)}`, '#fff2b8', 15);
+      }
+
       a.happiness = Math.min(100, a.happiness + 2);
       state.stats.productsCollected++;
-      floatText(cx, cy - 34, `${def.productName} ${'★'.repeat(q)}`, '#fff2b8', 15);
-      burst(cx, cy - 10, '#f5f0e6', 12);
       Sound.play('harvest');
       break;
     }
@@ -1065,7 +1158,7 @@ function buyAnimal(kind: AnimalKind): void {
   const count = state.animals.filter((a) => a.kind === kind).length;
   if (count >= 6) { UI.toast('围栏已经满了（每种最多 6 只）', 'bad'); return; }
   state.coins -= def.price;
-  state.animals.push(createAnimal(kind));
+  state.animals.push(createAnimal(kind, `${def.name}${count + 1}`));
   Sound.play('levelup');
   UI.toast(`购入 ${def.name}！去围栏看看它`, 'good');
   save();
@@ -1350,13 +1443,30 @@ function openShop(): void {
       </div>`
     : '<p class="dim">背包已经是最大容量了。</p>';
 
+  // 土地扩建
+  const nextArea = state.farmUnlocked;
+  const area = FARM_AREAS[nextArea];
+  const landRow = area
+    ? (() => {
+        const cost = AREA_UNLOCK_COST[nextArea] ?? 2500;
+        const cells = area.cols * area.rows;
+        const enough = state.coins >= cost;
+        return `<div class="shop-row${enough ? '' : ' cant'}">
+          <div><div class="nm">🌾 开垦新耕地</div>
+          <div class="dt">+${cells} 块地（${state.plots.filter((_, i) => plotAreaOf(i) < state.farmUnlocked).length} → ${state.plots.filter((_, i) => plotAreaOf(i) < state.farmUnlocked).length + cells} 块）</div></div>
+          <div class="pr">${cost}G</div>
+          <div class="buy-group"><button class="btn small" id="btn-landup" ${enough ? '' : 'disabled'}>开垦</button></div>
+        </div>`;
+      })()
+    : '<p class="dim">农场的地都开垦完了。</p>';
+
   UI.showModal(
     '订购箱',
     `<p class="dim">邮购直达。种子、工具、动物、背包扩容都在这儿。现在是 ${SEASON_ICON[curSeason]} <b>${SEASON_LABEL[curSeason]}季</b>，当季作物长得快。</p>
      <h3>种子</h3><div class="shop-list">${seedRows}</div>
      <h3>工具</h3><div class="shop-list">${toolRows}</div>
      <h3>动物</h3><div class="shop-list">${animalRows}</div>
-     <h3>其他</h3><div class="shop-list">${bagRow}</div>
+     <h3>其他</h3><div class="shop-list">${landRow}${bagRow}</div>
      <hr class="report-hr">
      <div class="report-total"><span>持有金币</span><span>${state.coins} G</span></div>
      <p class="dim">材料：🪵 木材 ${Bag.countInBag(state.bag, 'mat.wood')} · 🪨 石材 ${Bag.countInBag(state.bag, 'mat.stone')} · 🌿 纤维 ${Bag.countInBag(state.bag, 'mat.fiber')}</p>`,
@@ -1379,6 +1489,34 @@ function openShop(): void {
     el.addEventListener('click', () => buyAnimal(el.dataset.animal as AnimalKind));
   });
   document.getElementById('btn-bagup')?.addEventListener('click', () => upgradeBag());
+  document.getElementById('btn-landup')?.addEventListener('click', () => buyLand());
+}
+
+/** 开垦下一块耕地 */
+function buyLand(): void {
+  const k = state.farmUnlocked;
+  if (k >= FARM_AREAS.length) return;
+  const cost = AREA_UNLOCK_COST[k] ?? 2500;
+  if (state.coins < cost) { UI.toast('金币不够', 'bad'); return; }
+
+  state.coins -= cost;
+  state.farmUnlocked = k + 1;
+  unlockArea(k);
+
+  // 新地里若已有作物状态（理论上不会有），重置干净
+  const start = FARM_AREAS.slice(0, k).reduce((n, a) => n + a.cols * a.rows, 0);
+  const size = FARM_AREAS[k].cols * FARM_AREAS[k].rows;
+  for (let i = start; i < start + size && i < state.plots.length; i++) {
+    if (state.plots[i].crop) continue;
+    state.plots[i].tilled = false;
+    state.plots[i].watered = false;
+  }
+
+  Sound.play('levelup');
+  UI.toast(`开垦出 ${size} 块新耕地！`, 'good');
+  applySeason(seasonOfDay(state.day)); // 重绘底图，让新地变成泥土
+  save();
+  openShop();
 }
 
 function buySeed(id: CropId, n: number): void {
@@ -2243,12 +2381,19 @@ function setupTitle(): void {
        </ul>
        <h3>动物</h3>
        <ul>
-         <li>订购箱买鸡 / 牛，走到围栏里面朝动物按空格照料</li>
+         <li>订购箱买鸡 / 牛 / 羊，走到围栏里面朝动物按空格照料</li>
          <li>喂食 → 第二天才有蛋 / 奶；抚摸涨心情</li>
          <li>心情决定蛋 / 奶品质，饿着会掉心情</li>
-         <li>挤奶是三连短词，像挤奶的节奏</li>
+          <li>羊不产蛋奶，而是攒羊毛：喂食让毛长，长满 100% 就能剪</li>
+          <li>动物可以改名，面板里有个「改名」按钮</li>
+         <li>挤奶和剪毛都是三连短词，跟着节奏一下下按</li>
        </ul>
-       <h3>四季</h3>
+       <h3>土地扩建</h3>
+        <ul>
+          <li>一开始只有 24 块耕地；订购箱「其他」里可以花钱开垦新地</li>
+          <li>开垦后多种 12 块，产量上限直接抬高</li>
+        </ul>
+        <h3>四季</h3>
        <ul>
          <li>一年 32 天，每季 8 天：春 🌸 夏 ☀️ 秋 🍂 冬 ❄️</li>
          <li>每种作物有适宜季节，当季正常长，<b>反季慢一倍</b></li>

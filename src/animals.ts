@@ -19,26 +19,36 @@ export interface AnimalDef {
   building: 'coop' | 'barn';
   /** 游走速度 px/s */
   speed: number;
+  /** 产出方式：daily 每天一次，shear 攒够再剪 */
+  yield: 'daily' | 'shear';
 }
 
 export const ANIMAL_DEFS: Record<AnimalKind, AnimalDef> = {
   chicken: {
     kind: 'chicken', name: '鸡', icon: '🐔', price: 600,
     productId: 'prod.egg', productName: '鸡蛋', productIcon: '🥚',
-    building: 'coop', speed: 26
+    building: 'coop', speed: 26, yield: 'daily'
   },
   cow: {
     kind: 'cow', name: '牛', icon: '🐄', price: 2200,
     productId: 'prod.milk', productName: '牛奶', productIcon: '🥛',
-    building: 'barn', speed: 16
+    building: 'barn', speed: 16, yield: 'daily'
+  },
+  sheep: {
+    kind: 'sheep', name: '羊', icon: '🐑', price: 1200,
+    productId: 'prod.wool', productName: '羊毛', productIcon: '🧶',
+    building: 'barn', speed: 20, yield: 'shear'
   }
 };
 
-export const ANIMAL_ORDER: AnimalKind[] = ['chicken', 'cow'];
+export const ANIMAL_ORDER: AnimalKind[] = ['chicken', 'cow', 'sheep'];
 
-/** 围栏内的像素活动边界（留边距，避免贴墙） */
+/** 羊毛每晚的成长量：约 3 天可剪一次 */
+const WOOL_PER_NIGHT = 34;
+
+/** 围栏内的像素活动边界（留边距，避免贴墙）；羊住牛棚，共用牛圈 */
 export function penBounds(kind: AnimalKind): { minX: number; maxX: number; minY: number; maxY: number } {
-  const p = PENS[kind];
+  const p = PENS[kind === 'sheep' ? 'cow' : kind];
   return {
     minX: p.x0 * TILE + 18,
     maxX: (p.x1 + 1) * TILE - 18,
@@ -47,20 +57,28 @@ export function penBounds(kind: AnimalKind): { minX: number; maxX: number; minY:
   };
 }
 
+/** 当前是否有可收的产出（羊看羊毛，其它看 productReady） */
+export function isProductReady(a: Animal): boolean {
+  return a.kind === 'sheep' ? a.wool >= 100 : a.productReady;
+}
+
 let animalSeq = 0;
 
-export function createAnimal(kind: AnimalKind): Animal {
+export function createAnimal(kind: AnimalKind, name?: string): Animal {
   const b = penBounds(kind);
   const x = b.minX + Math.random() * (b.maxX - b.minX);
   const y = b.minY + Math.random() * (b.maxY - b.minY);
   return {
     id: `a${++animalSeq}_${kind}`,
     kind,
+    name,
     happiness: 60,
     fedToday: false,
     pettedToday: false,
     // 新买的动物带一份「见面礼」，让玩家立刻见到收获动作
     productReady: true,
+    // 新来的羊已经长满一身毛
+    wool: kind === 'sheep' ? 100 : 0,
     x, y,
     dir: 'down',
     moving: false,
@@ -135,7 +153,14 @@ export function happinessQuality(h: number): number {
 /** 睡觉时结算：喂了 → 明天有产物；没喂 → 掉心情。 */
 export function settleAnimalsOvernight(state: GameState): void {
   for (const a of state.animals) {
-    a.productReady = a.fedToday;
+    if (a.kind === 'sheep') {
+      // 羊不产「每日产物」，而是攒羊毛
+      a.productReady = false;
+      if (a.fedToday) a.wool = Math.min(100, a.wool + WOOL_PER_NIGHT);
+    } else {
+      a.productReady = a.fedToday;
+    }
+
     if (a.fedToday) {
       a.happiness = Math.min(100, a.happiness + 3);
     } else {

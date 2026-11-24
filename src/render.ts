@@ -5,10 +5,11 @@
 import { CROPS } from './config';
 import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
-  plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS
+  plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS,
+  areaUnlocked, plotAreaOf
 } from './world';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
-import { animalNear, ANIMAL_DEFS } from './animals';
+import { animalNear, ANIMAL_DEFS, isProductReady } from './animals';
 import { villagerNear, VILLAGER_DEFS } from './villagers';
 import { TOOLS } from './tools';
 import { PALETTES } from './seasons';
@@ -474,6 +475,29 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
     c.strokeStyle = '#e8a13c'; c.lineWidth = 2;
     const step = a.moving ? Math.sin(nowMs / 100) * 2 : 0;
     c.beginPath(); c.moveTo(-2, -2); c.lineTo(-2 + step, 2); c.moveTo(3, -2); c.lineTo(3 - step, 2); c.stroke();
+  } else if (a.kind === 'sheep') {
+    // 羊：蓬松的云朵状羊毛
+    const fluffy = Math.min(1, (a.wool ?? 0) / 100);
+    const r = 9 + fluffy * 5; // 毛长长了会变大
+    c.fillStyle = '#f7f4ec';
+    for (const [dx, dy, rr] of [[-8, -10, r], [2, -13, r * 1.05], [10, -9, r * 0.9], [-2, -6, r * 0.95], [6, -5, r * 0.85]]) {
+      c.beginPath(); c.arc(dx, dy, rr, 0, Math.PI * 2); c.fill();
+    }
+    // 头
+    c.fillStyle = '#e8ded0';
+    c.beginPath(); c.ellipse(15, -14, 6, 5, 0, 0, Math.PI * 2); c.fill();
+    // 耳朵
+    c.fillStyle = '#d9cbb8';
+    c.beginPath(); c.ellipse(11, -19, 3, 2, -0.5, 0, Math.PI * 2); c.fill();
+    // 眼
+    c.fillStyle = '#3d2b1f'; c.fillRect(16, -16, 2, 2);
+    // 腿
+    c.fillStyle = '#cfc2b0';
+    const sstep = a.moving ? Math.sin(nowMs / 160) * 2 : 0;
+    c.fillRect(-8, -4 + sstep * 0.3, 3, 6);
+    c.fillRect(-2, -4 - sstep * 0.3, 3, 6);
+    c.fillRect(5, -4 + sstep * 0.3, 3, 6);
+    c.fillRect(10, -4 - sstep * 0.3, 3, 6);
   } else {
     // 牛身体
     c.fillStyle = '#f2ede2';
@@ -507,13 +531,14 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
 
   // 状态提示
   const def = ANIMAL_DEFS[a.kind];
-  if (a.productReady) {
+  const tall = a.kind === 'cow' ? 34 : a.kind === 'sheep' ? 36 : 26;
+  if (isProductReady(a)) {
     c.font = '13px serif';
-    c.fillText(def.productIcon, x - 6, y - (a.kind === 'cow' ? 34 : 26) + Math.sin(nowMs / 300) * 2);
+    c.fillText(def.productIcon, x - 6, y - tall + Math.sin(nowMs / 300) * 2);
   } else if (!a.fedToday) {
     c.fillStyle = 'rgba(200,80,60,.9)';
     c.font = 'bold 12px sans-serif';
-    c.fillText('!', x - 2, y - (a.kind === 'cow' ? 32 : 24));
+    c.fillText('!', x - 2, y - (tall - 2));
   }
 }
 
@@ -543,8 +568,9 @@ export function render(state: GameState, dt: number, nowMs: number) {
   ctx.save();
   ctx.translate(ox, oy);
 
-  // 耕地与作物
+  // 耕地与作物（未解锁的地块不画，底图上是普通草地）
   for (let i = 0; i < state.plots.length; i++) {
+    if (!areaUnlocked(plotAreaOf(i), state.farmUnlocked)) continue;
     const { tx, ty } = plotTileOf(i);
     drawPlot(ctx, state.plots[i], tx * TILE, ty * TILE, nowMs);
   }

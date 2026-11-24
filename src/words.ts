@@ -139,7 +139,8 @@ const BUILT_IN: Record<WordCategory, string[]> = {
   ],
   animal: [
     'hen', 'cow', 'egg', 'pet', 'pat', 'hay', 'feed', 'milk', 'coop', 'barn',
-    'nest', 'pail', 'herd', 'calf', 'foal', 'lamb',
+    'nest', 'pail', 'herd', 'calf', 'foal', 'lamb', 'wool', 'comb', 'clip', 'ewe',
+    'flock', 'shear', 'fleece', 'grazing',
     'grain', 'trough', 'fodder', 'basket', 'clutch', 'dairy', 'bucket', 'stable',
     'pasture', 'feather', 'udder', 'rooster', 'heifer',
     'squeeze', 'gather', 'collect', 'scratch', 'gentle', 'stroke', 'milking',

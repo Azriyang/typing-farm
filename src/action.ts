@@ -4,14 +4,14 @@
    ============================================================ */
 
 import { CROPS } from './config';
-import { targetAt, T, tileAt } from './world';
+import { targetAt, T, tileAt, plotAreaOf, areaUnlocked } from './world';
 import { TOOLS } from './tools';
 import type { GameState, ResNode, ToolId } from './types';
 
 export type ActionKind =
   | 'till' | 'plant' | 'water' | 'harvest'
   | 'chop' | 'mine' | 'cut' | 'fish'
-  | 'door' | 'bin' | 'order';
+  | 'door' | 'bin' | 'order' | 'locked';
 
 export interface ActionInfo {
   kind: ActionKind;
@@ -89,6 +89,10 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
 
   // 3) 地块
   if (t.kind !== 'plot' || t.plotIndex < 0) return null;
+  // 未解锁的耕地区域
+  if (!areaUnlocked(plotAreaOf(t.plotIndex), state.farmUnlocked)) {
+    return base('locked', '这块地还没开垦', null, { plotIndex: t.plotIndex });
+  }
   const plot = state.plots[t.plotIndex];
   if (!plot.tilled) {
     return base('till', TOOLS.hoe.actionLabel, 'hoe', { plotIndex: t.plotIndex });

@@ -94,6 +94,7 @@ reg({ id: 'mat.fiber', kind: 'material', name: '纤维', icon: '🌿', max: 99, 
 
 reg({ id: 'prod.egg', kind: 'product', name: '鸡蛋', icon: '🥚', max: 99, desc: '鸡的产出 · 心情决定品质', price: 70 });
 reg({ id: 'prod.milk', kind: 'product', name: '牛奶', icon: '🥛', max: 99, desc: '牛的产出 · 心情决定品质', price: 160 });
+reg({ id: 'prod.wool', kind: 'product', name: '羊毛', icon: '🧶', max: 99, desc: '羊的产出 · 每隔几天剪一次', price: 280 });
 
 /* ---------------- 查询 ---------------- */
 

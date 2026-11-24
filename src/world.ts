@@ -27,13 +27,22 @@ export const T = {
 
 export type TileId = (typeof T)[keyof typeof T];
 
-/** 农场耕地范围（6 列 × 4 行） */
-export const FARM = { x: 11, y: 9, cols: 6, rows: 4 };
+/** 耕地区域：第 0 块初始就有，第 1 块要花钱买 */
+export const FARM_AREAS = [
+  { x: 11, y: 9, cols: 6, rows: 4 },
+  { x: 17, y: 9, cols: 3, rows: 4 }
+] as const;
+
+/** 从第几块起需要购买解锁 */
+export const AREA_UNLOCK_COST = [0, 2500];
+
+/** 兼容旧代码：第一块耕地 */
+export const FARM = FARM_AREAS[0];
 
 /** 可砍伐的树（动态节点） */
 export const TREE_SPOTS: Array<[number, number]> = [
   [20, 3], [21, 3], [20, 4], [26, 5], [27, 6], [2, 11],
-  [2, 13], [18, 4], [19, 12], [22, 6], [25, 10], [18, 10]
+  [2, 13], [18, 4], [19, 12], [22, 6], [25, 10], [21, 12]
 ];
 
 /** 可开采的岩石（动态节点）；原 y8 的四块让位给进镇道路，移到镇西石堆 */
@@ -160,8 +169,8 @@ export function buildMap(): void {
   set(5, 8, T.PATH);
   for (let x = 18; x <= 47; x++) { set(x, 7, T.PATH); set(x, 8, T.PATH); }
 
-  // 农田
-  setRect(FARM.x, FARM.y, FARM.cols, FARM.rows, T.SOIL);
+  // 农田（只铺第一块；第二块买地后由 unlockArea 铺上）
+  setRect(FARM_AREAS[0].x, FARM_AREAS[0].y, FARM_AREAS[0].cols, FARM_AREAS[0].rows, T.SOIL);
 
   // 小镇广场（街道南侧的一片空地）
   setRect(38, 9, 7, 3, T.PATH);
@@ -220,26 +229,69 @@ export function canStand(px: number, py: number): boolean {
 
 /* ---------------- 耕地 ---------------- */
 
+/** 每个区域的地块数 */
+export function areaSize(k: number): number {
+  const a = FARM_AREAS[k];
+  return a ? a.cols * a.rows : 0;
+}
+
+/** 全局地块索引 → 所属区域 */
+export function plotAreaOf(index: number): number {
+  let i = index;
+  for (let k = 0; k < FARM_AREAS.length; k++) {
+    const n = areaSize(k);
+    if (i < n) return k;
+    i -= n;
+  }
+  return 0;
+}
+
+/** 该区域是否已解锁（farmUnlocked = 已解锁的区域数） */
+export function areaUnlocked(k: number, farmUnlocked: number): boolean {
+  return k < farmUnlocked;
+}
+
 export function isFarmTile(tx: number, ty: number): boolean {
-  return (
-    tx >= FARM.x && tx < FARM.x + FARM.cols &&
-    ty >= FARM.y && ty < FARM.y + FARM.rows
-  );
+  let offset = 0;
+  void offset;
+  for (const a of FARM_AREAS) {
+    if (tx >= a.x && tx < a.x + a.cols && ty >= a.y && ty < a.y + a.rows) return true;
+  }
+  return false;
 }
 
 export function plotIndexOf(tx: number, ty: number): number {
-  if (!isFarmTile(tx, ty)) return -1;
-  return (ty - FARM.y) * FARM.cols + (tx - FARM.x);
+  let offset = 0;
+  for (const a of FARM_AREAS) {
+    if (tx >= a.x && tx < a.x + a.cols && ty >= a.y && ty < a.y + a.rows) {
+      return offset + (ty - a.y) * a.cols + (tx - a.x);
+    }
+    offset += a.cols * a.rows;
+  }
+  return -1;
 }
 
 export function plotTileOf(index: number): { tx: number; ty: number } {
-  return {
-    tx: FARM.x + (index % FARM.cols),
-    ty: FARM.y + Math.floor(index / FARM.cols)
-  };
+  let i = index;
+  for (const a of FARM_AREAS) {
+    const n = a.cols * a.rows;
+    if (i < n) {
+      return { tx: a.x + (i % a.cols), ty: a.y + Math.floor(i / a.cols) };
+    }
+    i -= n;
+  }
+  const a = FARM_AREAS[0];
+  return { tx: a.x, ty: a.y };
 }
 
-export const PLOT_COUNT = FARM.cols * FARM.rows;
+export const PLOT_COUNT = FARM_AREAS.reduce((n, a) => n + a.cols * a.rows, 0);
+
+/** 把某块耕地铺成泥土（买地解锁时调用） */
+export function unlockArea(k: number): void {
+  const a = FARM_AREAS[k];
+  if (!a) return;
+  setRect(a.x, a.y, a.cols, a.rows, T.SOIL);
+}
 
 /* ---------------- 交互目标 ---------------- */
 
@@ -283,6 +335,8 @@ export function targetAt(tx: number, ty: number): Target | null {
 export function isOpenGround(tx: number, ty: number): boolean {
   const t = tileAt(tx, ty);
   if (t !== T.GRASS && t !== T.FLOWER) return false;
+  // 耕地（含尚未解锁的那块）不长杂草
+  if (isFarmTile(tx, ty)) return false;
   for (const o of OBJECTS) if (o.tx === tx && o.ty === ty) return false;
   if (dynamicBlocked.has(idx(tx, ty))) return false;
   return true;

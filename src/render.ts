@@ -1163,6 +1163,7 @@ export function render(state: GameState, dt: number, nowMs: number) {
     }
 
     for (const v of state.villagers ?? []) {
+      if (v.active === false) continue;
       ents.push({ y: v.y + 2, draw: () => drawVillager(ctx, v, nowMs) });
     }
   } else {
@@ -1772,6 +1773,18 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
     c.fillRect(v.x - w / 2, v.y - 58, w, 14);
     c.fillStyle = '#4a3320';
     c.fillText(def.name, v.x, v.y - 48);
+
+    // 正在做的事：让「他有自己的生活」看得见
+    if (v.doing) {
+      c.font = '10px "PingFang SC",sans-serif';
+      const dw = c.measureText(v.doing).width + 10;
+      c.fillStyle = 'rgba(45,32,22,.42)';
+      c.fillRect(v.x - dw / 2 - 1, v.y - 73, dw + 2, 13);
+      c.fillStyle = 'rgba(230,220,200,.9)';
+      c.fillRect(v.x - dw / 2, v.y - 72, dw, 11);
+      c.fillStyle = '#5a4530';
+      c.fillText(v.doing, v.x, v.y - 63.5);
+    }
     c.textAlign = 'left';
   }
 }

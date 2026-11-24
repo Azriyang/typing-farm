@@ -172,6 +172,14 @@ export interface Villager {
   wanderT: number;
   tx: number;
   ty: number;
+  /** 此刻是否出门（按日程；深夜在家则 false） */
+  active?: boolean;
+  /** 正在做什么（"钓鱼""看店"…），用于头顶提示 */
+  doing?: string;
+  /** 到了目标点之后站定，偶尔环顾 */
+  lookT?: number;
+  /** 当前目标点标识；换了地方且距离很远时直接到场（视为从别处赶来） */
+  spotKey?: string;
 }
 
 /* ---------------- 地块 ---------------- */

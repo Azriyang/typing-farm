@@ -5,8 +5,86 @@
    好感解锁更暖的对话与杂货店折扣；送礼投其所好涨得更快。
    ============================================================ */
 
-import type { Villager, DialoguePhrase, Dir, GameState } from './types';
-import { TILE, TOWN_OPEN } from './world';
+import type { Villager, DialoguePhrase, Dir, GameState, Season, Weather } from './types';
+import { TILE, TOWN_OPEN, canStand, MAP_W, MAP_H } from './world';
+import { seasonOfDay } from './seasons';
+
+/* ============================================================
+   日程：NPC 自己的一天
+   ------------------------------------------------------------
+   不做寻路，只做「朝目标点走 + 到了就待着」。
+   目标是玩家能感知的「有生活」，不是「聪明」。
+   ============================================================ */
+
+/** 一个可去的地点（tile 坐标） */
+export interface Spot {
+  tx: number;
+  ty: number;
+  /** 到达判定半径（tile） */
+  radius: number;
+}
+
+/** 全天可去的地点表 */
+export const SPOTS = {
+  /** 农田东侧，阿茂守着地 */
+  farmEdge: { tx: 20, ty: 13, radius: 2.5 },
+  /** 池塘边，小渔钓鱼 */
+  pondBank: { tx: 19, ty: 17, radius: 1.8 },
+  /** 小镇广场 */
+  plaza: { tx: 39, ty: 10, radius: 2.5 },
+  /** 杂货店门口 */
+  shopFront: { tx: 34, ty: 7, radius: 1.6 },
+  /** 镇口，进出小镇的路 */
+  townGate: { tx: 34, ty: 11, radius: 1.6 },
+  /** 屋檐下（雨天避雨） */
+  underRoof: { tx: 36, ty: 7, radius: 1.2 }
+} as const;
+
+/** 按季节变化的「花最多的地方」——阿晴会追着花走 */
+export function flowerSpot(season: Season): Spot {
+  switch (season) {
+    case 'spring': return { tx: 9, ty: 13, radius: 1.8 };   // 农场的花丛
+    case 'summer': return { tx: 17, ty: 6, radius: 1.5 };
+    case 'autumn': return { tx: 45, ty: 10, radius: 1.8 };
+    default: return SPOTS.townGate;                          // 冬天没花，去镇口
+  }
+}
+
+export interface ScheduleEntry {
+  /** 起始分钟（含） */
+  from: number;
+  /** 结束分钟（不含） */
+  to: number;
+  /** 目标地点；函数形式用于随季节变化的地点 */
+  spot: Spot | ((season: Season) => Spot);
+  /** 只在特定天气生效（不填 = 任何天气） */
+  onlyWeather?: Weather;
+  /** 只在特定季节生效 */
+  onlySeason?: Season;
+  /** 待着时做的事（只用于提示，不影响逻辑） */
+  doing: string;
+}
+
+/**
+ * 解析某个 NPC 在此刻该去哪、做什么。
+ * 按顺序取**第一条满足条件**的日程——所以「雨天」这类特殊条目要写在前面。
+ * 返回 null 表示这个时间他不出门（在家）。
+ */
+export function resolveSchedule(
+  def: VillagerDef,
+  time: number,
+  weather: Weather,
+  season: Season
+): { spot: Spot; doing: string } | null {
+  for (const e of def.schedule ?? []) {
+    if (time < e.from || time >= e.to) continue;
+    if (e.onlyWeather && e.onlyWeather !== weather) continue;
+    if (e.onlySeason && e.onlySeason !== season) continue;
+    const spot = typeof e.spot === 'function' ? e.spot(season) : e.spot;
+    return { spot, doing: e.doing };
+  }
+  return null;
+}
 
 export interface VillagerDef {
   id: string;
@@ -23,6 +101,8 @@ export interface VillagerDef {
   greet: string;
   /** 送礼反应台词：玩家靠语气判断喜恶，不显示数值 */
   reactions: Record<'like' | 'neutral' | 'dislike', string[]>;
+  /** 一天的日程；不在任何条目覆盖的时间里就不出门 */
+  schedule?: ScheduleEntry[];
 }
 
 export const VILLAGER_DEFS: Record<string, VillagerDef> = {
@@ -35,6 +115,12 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       neutral: ['哦，谢谢你了。', '嗯，收下了。'],
       dislike: ['唉，我这把年纪可弄不来这个。', '这…我留着也没用啊。', '鱼腥味…我可不碰。']
     },
+    schedule: [
+      { from: 360, to: 720, spot: SPOTS.farmEdge, doing: '看庄稼' },
+      { from: 720, to: 840, spot: SPOTS.plaza, doing: '吃午饭' },
+      { from: 840, to: 1080, spot: SPOTS.farmEdge, doing: '翻地' },
+      { from: 1080, to: 1320, spot: SPOTS.plaza, doing: '和人聊天' }
+    ],
     phrases: [
       { en: 'the soil is good this year', zh: '今年的土不错' },
       { en: 'rain helps the crops grow', zh: '雨水帮庄稼生长' },
@@ -52,6 +138,11 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       neutral: ['谢了，朋友。', '嗯，我收下了。'],
       dislike: ['这玩意儿…我还是更想要鱼。', '咳，这个我不太在行。', '木头…我可不拿它下钩。']
     },
+    schedule: [
+      { from: 360, to: 1320, spot: SPOTS.underRoof, onlyWeather: 'rain', doing: '避雨' },
+      { from: 360, to: 1120, spot: SPOTS.pondBank, doing: '钓鱼' },
+      { from: 1120, to: 1320, spot: SPOTS.plaza, doing: '收拾渔具' }
+    ],
     phrases: [
       { en: 'the fish bite at dawn', zh: '鱼儿清晨咬钩' },
       { en: 'patience catches the big one', zh: '耐心钓大鱼' },
@@ -69,6 +160,10 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       neutral: ['谢谢惠顾，我收下了。', '嗯，不错的心意。'],
       dislike: ['这个…店里可不收这种货啊。', '咳，这东西我这儿用不上。', '石头…我这儿又不是石料铺。']
     },
+    schedule: [
+      { from: 480, to: 1200, spot: SPOTS.shopFront, doing: '看店' },
+      { from: 1200, to: 1320, spot: SPOTS.plaza, doing: '打烊散步' }
+    ],
     phrases: [
       { en: 'fresh goods every morning', zh: '每天早上进新货' },
       { en: 'a fair price for all', zh: '童叟无欺' },
@@ -86,6 +181,15 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       neutral: ['谢谢你的礼物。', '嗯，我会好好收着的。'],
       dislike: ['这个…我不是很需要呢。', '呜，这个我有点怕…', '硬邦邦的…我不太喜欢。']
     },
+    schedule: [
+      // 雨天 / 雪天不出去看花
+      { from: 360, to: 1320, spot: SPOTS.underRoof, onlyWeather: 'rain', doing: '躲雨' },
+      { from: 360, to: 1320, spot: SPOTS.underRoof, onlyWeather: 'snow', doing: '躲雪' },
+      // 上午去当季花开得最好的地方
+      { from: 360, to: 720, spot: (s: Season) => flowerSpot(s), doing: '看花' },
+      { from: 720, to: 1080, spot: SPOTS.plaza, doing: '和人聊天' },
+      { from: 1080, to: 1320, spot: SPOTS.plaza, doing: '看日落' }
+    ],
     phrases: [
       { en: 'the flowers bloom so nicely', zh: '花开得真好' },
       { en: 'i like sweet strawberries', zh: '我喜欢甜草莓' },
@@ -172,32 +276,94 @@ export function createVillager(id: string): Villager {
   };
 }
 
+/**
+ * 按日程驱动 NPC 的一天。
+ * 不做寻路——只朝目标点直线走，走不动就换个方向蹭一下。
+ * 目的是让人「有生活」，不是让人「聪明」。
+ */
 export function updateVillagers(state: GameState, dt: number): void {
-  const b = townBounds();
+  const season = seasonOfDay(state.day);
+
   for (const v of state.villagers) {
-    v.wanderT -= dt;
-    const dx = v.tx - v.x;
-    const dy = v.ty - v.y;
-    const dist = Math.hypot(dx, dy);
-    if (v.wanderT <= 0 || dist < 3) {
-      if (Math.random() < 0.4) { v.tx = v.x; v.ty = v.y; }
-      else {
-        v.tx = b.minX + Math.random() * (b.maxX - b.minX);
-        v.ty = b.minY + Math.random() * (b.maxY - b.minY);
-      }
-      v.wanderT = 2 + Math.random() * 4;
+    const def = VILLAGER_DEFS[v.id];
+    if (!def) continue;
+
+    const plan = resolveSchedule(def, state.time, state.weather, season);
+
+    // 这个时间不出门 —— 藏起来，也不可交互
+    if (!plan) {
+      v.active = false;
+      v.moving = false;
+      continue;
     }
-    if (dist > 2) {
-      const sp = 20;
-      v.x += (dx / dist) * sp * dt;
-      v.y += (dy / dist) * sp * dt;
+
+    const spotKey = plan.spot.tx + ',' + plan.spot.ty;
+    const goalX = plan.spot.tx * TILE + TILE / 2;
+    const goalY = plan.spot.ty * TILE + TILE / 2;
+    const farFromGoal = Math.hypot(goalX - v.x, goalY - v.y);
+
+    // 刚从家里出来，或换了目的地而且很远 → 直接到场（视为「从别处赶来」）
+    // 近距离仍然走过去，所以玩家看得见的是自然的走路
+    if (v.active === false || (v.spotKey !== spotKey && farFromGoal > 520)) {
+      const sp = plan.spot;
+      v.x = sp.tx * TILE + TILE / 2 + (Math.random() - 0.5) * TILE * 1.2;
+      v.y = sp.ty * TILE + TILE / 2 + (Math.random() - 0.5) * TILE * 1.2;
+      v.tx = v.x;
+      v.ty = v.y;
+      v.lookT = 0;
+    }
+    v.spotKey = spotKey;
+    v.active = true;
+    v.doing = plan.doing;
+
+    const dist = Math.hypot(goalX - v.x, goalY - v.y);
+    const arrived = dist <= plan.spot.radius * TILE;
+
+    if (arrived) {
+      // 到了：站定，偶尔环顾四周
+      v.moving = false;
+      v.lookT = (v.lookT ?? 0) - dt;
+      if (v.lookT <= 0) {
+        const dirs: Dir[] = ['down', 'left', 'right', 'up'];
+        v.dir = dirs[Math.floor(Math.random() * dirs.length)];
+        v.lookT = 2.5 + Math.random() * 3;
+      }
+      // 轻微调整站位，免得一直站在同一个像素
+      if (Math.random() < 0.004) {
+        v.x += (Math.random() - 0.5) * 20;
+        v.y += (Math.random() - 0.5) * 16;
+      }
+    } else {
+      // 朝目标走；挡住就横向蹭
+      const sp = 22;
+      const dx = (goalX - v.x) / dist;
+      const dy = (goalY - v.y) / dist;
+      const nx = v.x + dx * sp * dt;
+      const ny = v.y + dy * sp * dt;
+      if (canStand(nx, ny)) {
+        v.x = nx;
+        v.y = ny;
+      } else {
+        // 侧向试探：优先沿较大的那个轴的垂直方向
+        const sx = -dy;
+        const sy = dx;
+        const sign = Math.random() < 0.5 ? 1 : -1;
+        if (canStand(v.x + sx * sp * dt * sign, v.y + sy * sp * dt * sign)) {
+          v.x += sx * sp * dt * sign;
+          v.y += sy * sp * dt * sign;
+        } else if (canStand(nx, v.y)) {
+          v.x = nx;
+        } else if (canStand(v.x, ny)) {
+          v.y = ny;
+        }
+      }
       v.moving = true;
       v.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-    } else {
-      v.moving = false;
     }
-    v.x = Math.max(b.minX, Math.min(b.maxX, v.x));
-    v.y = Math.max(b.minY, Math.min(b.maxY, v.y));
+
+    // 兜底：别跑出地图
+    v.x = Math.max(20, Math.min(MAP_W * TILE - 20, v.x));
+    v.y = Math.max(20, Math.min(MAP_H * TILE - 20, v.y));
   }
 }
 
@@ -212,6 +378,7 @@ export function villagerNear(state: GameState, px: number, py: number, dir: Dir)
   let best: Villager | null = null;
   let bestD = 52;
   for (const v of state.villagers) {
+    if (v.active === false) continue;
     const d = Math.hypot(v.x - fx, v.y - fy);
     if (d < bestD) { bestD = d; best = v; }
   }

@@ -70,6 +70,76 @@ export function difficulty(word: string): number {
   return result;
 }
 
+/* ---------------- 词义 ---------------- */
+
+/**
+ * 每个英文词的中文释义。
+ * 打字面板显示的是「词义」而不是「动作名」——
+ * 否则 sown（已播种）会被标成「开垦」，反而记错。
+ */
+const WORD_ZH: Record<string, string> = {
+  /* farm */
+  sow: '播种', hoe: '锄地', dig: '挖', reap: '收割', seed: '种子', grow: '生长',
+  soil: '土壤', weed: '杂草', yield: '收成', grain: '谷物', water: '浇水', plant: '种植',
+  ripen: '成熟', shade: '阴凉', sprout: '发芽', bundle: '捆扎', garden: '菜园',
+  manure: '肥料', sown: '已播种', loam: '壤土', husk: '谷壳', harvest: '收获',
+  fertile: '肥沃', orchard: '果园', produce: '出产', blossom: '开花', compost: '堆肥',
+  drizzle: '细雨', seedling: '幼苗', moisture: '水分', irrigate: '灌溉', farmland: '农田',
+  sunlight: '阳光', cultivate: '耕作', bountiful: '丰盛', greenhouse: '温室',
+  harvesting: '收割中', prosperous: '兴旺', agriculture: '农业', cultivation: '栽培',
+
+  /* chop */
+  axe: '斧头', saw: '锯子', fell: '伐倒', hew: '砍削', bark: '树皮', chop: '砍',
+  trunk: '树干', split: '劈开', stump: '树桩', cleave: '劈裂', timber: '木材',
+  lumber: '木料', branch: '树枝', shatter: '粉碎', splinter: '木屑', woodland: '林地',
+  hardwood: '硬木', chainsaw: '油锯', heartwood: '心材', timberline: '林线',
+  lumberjack: '伐木工',
+
+  /* mine */
+  ore: '矿石', pick: '镐', rock: '岩石', mine: '矿', deep: '深处', shaft: '竖井',
+  stone: '石头', geode: '晶洞', quarry: '采石场', tunnel: '隧道', rubble: '碎石',
+  cavern: '洞穴', marble: '大理石', boulder: '巨石', crystal: '水晶', granite: '花岗岩',
+  mineral: '矿物', pickaxe: '镐', bedrock: '基岩', gemstone: '宝石', excavate: '挖掘',
+  magma: '岩浆', garnet: '石榴石', quartz: '石英',
+  tunneling: '掘进', quarrying: '采石', excavation: '开挖',
+
+  /* cut */
+  cut: '切割', mow: '刈草', snip: '剪断', trim: '修剪', grass: '草', shear: '剪切',
+  hack: '劈砍', mown: '已刈割',
+  slice: '切片', slash: '挥砍', swath: '一束', prune: '剪枝', scythe: '长柄镰',
+  machete: '砍刀', thistle: '蓟', bramble: '荆棘', thicket: '灌木丛', pruning: '修枝',
+  undergrowth: '下层灌木', overgrowth: '蔓生', shrubbery: '灌木', clearance: '清理',
+  vegetation: '植被', wilderness: '荒野',
+
+  /* fish */
+  tug: '猛拉', net: '渔网', cast: '抛竿', hook: '鱼钩', line: '鱼线', reel: '收线',
+  bait: '鱼饵', pond: '池塘', pull: '拉扯', drag: '拖拽', haul: '拖上来', yank: '猛拽',
+  land: '拉上岸', float: '浮标', shore: '岸边', catch: '捕获', heave: '用力拉',
+  splash: '溅水', bobber: '浮子', ripple: '涟漪', strike: '咬钩', tackle: '钓具',
+  battle: '搏斗', silver: '银色', golden: '金色', trophy: '战利品', angler: '垂钓者',
+  current: '水流', halibut: '大比目鱼', harpoon: '鱼叉', mariner: '水手',
+  mackerel: '鲭鱼', seabream: '鲷鱼', undertow: '暗流', riverbank: '河岸',
+  tidewater: '潮水', fisherman: '渔夫', struggle: '挣扎', treasure: '宝物',
+  monster: '怪物', leviathan: '巨兽', whirlpool: '漩涡', anglerfish: '鮟鱇',
+  monstrous: '巨大',
+
+  /* animal */
+  hen: '母鸡', cow: '母牛', egg: '蛋', pet: '抚摸', pat: '轻拍', hay: '干草',
+  feed: '喂食', milk: '牛奶', coop: '鸡舍', barn: '牛棚', nest: '窝', pail: '提桶',
+  herd: '畜群', calf: '小牛', foal: '幼驹', lamb: '羔羊', wool: '羊毛', comb: '梳子',
+  clip: '剪下', ewe: '母羊', flock: '羊群', fleece: '羊毛', grazing: '吃草',
+  trough: '饲料槽', fodder: '饲料', basket: '篮子', clutch: '一窝蛋', dairy: '乳品',
+  bucket: '水桶', stable: '马厩', pasture: '牧场', feather: '羽毛', udder: '乳房',
+  rooster: '公鸡', heifer: '小母牛', squeeze: '挤奶', gather: '收集', collect: '收取',
+  scratch: '抓挠', gentle: '温和', stroke: '抚摸', milking: '挤奶', livestock: '家畜',
+  shepherd: '牧羊人', ruminant: '反刍动物', milkmaid: '挤奶女工', henhouse: '鸡舍'
+};
+
+/** 取词义；没有收录就返回空 */
+export function zhOf(word: string): string {
+  return WORD_ZH[word] ?? '';
+}
+
 /* ---------------- 难度档 ---------------- */
 
 export interface Band {
@@ -318,7 +388,8 @@ export function pickWord(cat: WordCategory, bandIndex: number): string {
 /** 取一个带中文提示与难度分的 Word */
 export function makeWord(cat: WordCategory, bandIndex: number, zh: string): Word {
   const text = pickWord(cat, bandIndex);
-  return { text, zh, diff: difficulty(text) };
+  // 优先用词本身的释义；没有收录才退回动作名
+  return { text, zh: WORD_ZH[text] ?? zh, diff: difficulty(text) };
 }
 
 /** 取 n 个词（洗牌袋保证不重复） */

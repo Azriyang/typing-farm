@@ -2473,7 +2473,7 @@ function frame(ts: number): void {
     } else if (fishing.phase === 'bite') {
       UI.syncFishing('bite', (fishing.biteEnd - ts) / fishing.window, currentLabel);
     } else {
-      UI.syncTyping(session, currentLabel, state.combo, diff().showZhHint);
+      UI.syncTyping(session, currentLabel, state.combo);
     }
     UI.renderHotbar(state, selectSlot);
   }

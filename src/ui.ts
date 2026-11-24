@@ -232,12 +232,12 @@ export function wordMarkup(word: string, typed: string): string {
   return out;
 }
 
-export function syncTyping(session: TypingSession, actionLabel: string, combo: number, showZh = true): void {
+export function syncTyping(session: TypingSession, actionLabel: string, combo: number): void {
   const card = $('typing-card');
   const nowWord = session.currentWord;
 
   const key = nowWord
-    ? `${session.index}|${session.typed}|${actionLabel}|${combo}|${showZh}|${session.words.map((w) => w.text).join(',')}`
+    ? `${session.index}|${session.typed}|${actionLabel}|${combo}|${session.words.map((w) => w.text).join(',')}`
     : `idle|${actionLabel}|${combo}`;
   if (key === lastTypingKey) {
     if (nowWord) updateTimer(session);
@@ -258,8 +258,8 @@ export function syncTyping(session: TypingSession, actionLabel: string, combo: n
 
   card.className = 'typing-card active';
   $('t-action').textContent = actionLabel;
-  // 挑战难度不给中文提示
-  $('t-zh').textContent = showZh ? nowWord.zh : '\u3000';
+  // 中文提示始终显示——顺带记住词义，隐藏它只是剥夺信息，不是增加难度
+  $('t-zh').textContent = nowWord.zh;
   $('t-en').innerHTML = wordMarkup(nowWord.text, session.typed);
 
   let chain = '';

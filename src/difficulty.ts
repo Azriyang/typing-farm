@@ -23,8 +23,6 @@ export interface DifficultyDef {
   failPenalty: number;
   /** 打错时是否清空连击 */
   comboBreakOnError: boolean;
-  /** 打字时是否显示中文提示（轻松档更醒目） */
-  showZhHint: boolean;
 }
 
 export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
@@ -37,8 +35,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     toleranceBonus: 2,
     bandShift: -1,
     failPenalty: 0.25,
-    comboBreakOnError: false,
-    showZhHint: true
+    comboBreakOnError: false
   },
   normal: {
     id: 'normal',
@@ -49,8 +46,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     toleranceBonus: 0,
     bandShift: 0,
     failPenalty: 0.5,
-    comboBreakOnError: true,
-    showZhHint: true
+    comboBreakOnError: true
   },
   hard: {
     id: 'hard',
@@ -61,8 +57,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     toleranceBonus: -1,
     bandShift: 1,
     failPenalty: 1.0,
-    comboBreakOnError: true,
-    showZhHint: false
+    comboBreakOnError: true
   }
 };
 

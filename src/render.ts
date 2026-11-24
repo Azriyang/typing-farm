@@ -7,8 +7,9 @@ import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
   plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS,
   areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos,
-  FARM_DOORS
+  FARM_DOORS, TOWN_FOUNTAIN
 } from './world';
+import type { TownBuildingKind } from './world';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
 import { villagerNear, VILLAGER_DEFS } from './villagers';
@@ -901,25 +902,54 @@ function drawBarn(c: Ctx) {
 
 /* ---------------- 小镇建筑 ---------------- */
 
-function drawTownBuildings(c: Ctx) {
+/* ---------------- 小镇建筑 ---------------- */
+
+/** 每种建筑的招牌 */
+const TOWN_SIGN: Record<TownBuildingKind, { text: string; color: string } | null> = {
+  store: { text: '杂货店', color: '#f7e9c4' },
+  tavern: { text: '酒馆', color: '#f7e9c4' },
+  smith: { text: '铁匠铺', color: '#e2dcd0' },
+  clinic: { text: '诊所', color: '#eef6f8' },
+  school: { text: '学堂', color: '#f2e8d4' },
+  tower: null,
+  house: null
+};
+
+function drawTownBuildings(c: Ctx, nowMs = 0) {
   for (const b of TOWN_BUILDINGS) {
     const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
     const north = b.y < 8; // 门朝街道（北侧建筑门在下，南侧建筑门在上）
+
+    // 钟楼单独画
+    if (b.kind === 'tower') { drawTower(c, x, y, w, h); continue; }
+
     c.fillStyle = 'rgba(60,40,20,.18)';
     c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.5, 10, 0, 0, Math.PI * 2); c.fill();
-    // 墙
-    c.fillStyle = b.kind === 'store' ? '#e8dcc0' : '#efdcba';
+
+    // 墙（按类型换底色）
+    const wallBase =
+      b.kind === 'store' ? '#e8dcc0'
+      : b.kind === 'smith' ? '#cfc8bd'
+      : b.kind === 'clinic' ? '#f2f6f6'
+      : '#efdcba';
+    c.fillStyle = wallBase;
     c.fillRect(x + 4, y + 22, w - 8, h - 22);
     c.fillStyle = 'rgba(0,0,0,.08)';
     for (let i = 0; i < 3; i++) c.fillRect(x + 4, y + 32 + i * 20, w - 8, 3);
+
     // 屋顶
     c.fillStyle = b.roof;
     c.beginPath();
     c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
     c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.16)';
+    c.beginPath();
+    c.moveTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w * 0.6, y + 26); c.lineTo(x + w * 0.35, y + 26);
+    c.closePath(); c.fill();
     c.fillStyle = 'rgba(0,0,0,.2)';
     c.fillRect(x - 6, y + 23, w + 12, 4);
-    // 门（朝向街道一侧）
+
+    // 门
     const doorY = north ? y + h - 34 : y + 22;
     c.fillStyle = '#6f4a2b';
     c.fillRect(x + w / 2 - 13, doorY, 26, 34);
@@ -927,6 +957,7 @@ function drawTownBuildings(c: Ctx) {
     c.fillRect(x + w / 2 - 10, doorY + 3, 20, 31);
     c.fillStyle = '#e8c86a';
     c.fillRect(x + w / 2 + 5, doorY + 16, 3, 3);
+
     // 窗
     c.fillStyle = '#7fb8d4';
     c.fillRect(x + 12, y + 34, 20, 16);
@@ -934,17 +965,124 @@ function drawTownBuildings(c: Ctx) {
     c.strokeStyle = '#8e6a44'; c.lineWidth = 2;
     c.strokeRect(x + 12, y + 34, 20, 16);
     c.strokeRect(x + w - 32, y + 34, 20, 16);
-    // 店铺招牌
-    if (b.kind === 'store') {
-      c.fillStyle = '#f7e9c4';
+    // 窗反光
+    c.fillStyle = 'rgba(255,255,255,.32)';
+    c.beginPath();
+    c.moveTo(x + 14, y + 48); c.lineTo(x + 22, y + 34); c.lineTo(x + 26, y + 34); c.lineTo(x + 18, y + 48);
+    c.closePath(); c.fill();
+
+    // 招牌
+    const sign = TOWN_SIGN[b.kind];
+    if (sign) {
+      c.fillStyle = sign.color;
       c.fillRect(x + w / 2 - 24, y + 26, 48, 14);
       c.fillStyle = '#8a5a2b';
       c.font = 'bold 10px "PingFang SC",sans-serif';
       c.textAlign = 'center';
-      c.fillText('杂货店', x + w / 2, y + 36);
+      c.fillText(sign.text, x + w / 2, y + 36);
       c.textAlign = 'left';
     }
+
+    // 各类型的额外细节
+    if (b.kind === 'smith') {
+      // 烟囱冒的烟
+      c.fillStyle = '#8a8a8a';
+      c.fillRect(x + w - 26, y - 16, 12, 20);
+      c.fillStyle = 'rgba(180,180,180,.55)';
+      c.beginPath(); c.arc(x + w - 20, y - 22, 5, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(x + w - 16, y - 32, 4, 0, Math.PI * 2); c.fill();
+    } else if (b.kind === 'tavern') {
+      // 门口挂的灯笼
+      c.fillStyle = '#c9563f';
+      c.beginPath(); c.arc(x + 16, y + h - 44, 5, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#f5c04a';
+      c.beginPath(); c.arc(x + 16, y + h - 46, 2.4, 0, Math.PI * 2); c.fill();
+    } else if (b.kind === 'clinic') {
+      // 红十字
+      c.fillStyle = '#d9534f';
+      c.fillRect(x + w / 2 - 7, y + 30, 14, 4);
+      c.fillRect(x + w / 2 - 2, y + 25, 4, 14);
+    }
   }
+
+  drawFountain(c, nowMs);
+}
+
+/** 钟楼：细高的塔身 + 表盘 */
+function drawTower(c: Ctx, x: number, y: number, w: number, h: number) {
+  c.fillStyle = 'rgba(60,40,20,.2)';
+  c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.55, 9, 0, 0, Math.PI * 2); c.fill();
+
+  // 塔身
+  c.fillStyle = '#b0a89a';
+  c.fillRect(x + 4, y + 18, w - 8, h - 20);
+  c.fillStyle = '#c8c0b0';
+  c.fillRect(x + 6, y + 20, w - 12, h - 24);
+  // 石缝
+  c.fillStyle = 'rgba(0,0,0,.1)';
+  for (let i = 0; i < 4; i++) c.fillRect(x + 6, y + 30 + i * 16, w - 12, 2);
+
+  // 尖顶
+  c.fillStyle = '#6b6b6b';
+  c.beginPath();
+  c.moveTo(x + 1, y + 20);
+  c.lineTo(x + w / 2, y - 14);
+  c.lineTo(x + w - 1, y + 20);
+  c.closePath(); c.fill();
+  c.fillStyle = '#8a8a8a';
+  c.beginPath();
+  c.moveTo(x + w / 2, y - 14);
+  c.lineTo(x + w - 1, y + 20);
+  c.lineTo(x + w * 0.62, y + 20);
+  c.closePath(); c.fill();
+
+  // 表盘
+  const cx = x + w / 2;
+  const cy = y + 40;
+  c.fillStyle = '#f7f2e4';
+  c.beginPath(); c.arc(cx, cy, 11, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#5a4a38'; c.lineWidth = 2;
+  c.beginPath(); c.arc(cx, cy, 11, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = '#3d2b1f'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx, cy - 7); c.stroke();
+  c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + 5, cy + 3); c.stroke();
+
+  // 门
+  c.fillStyle = '#4a3a2e';
+  c.fillRect(cx - 9, y + h - 26, 18, 22);
+}
+
+/** 广场喷泉 */
+function drawFountain(c: Ctx, nowMs: number) {
+  const f = TOWN_FOUNTAIN;
+  const x = f.x * TILE, y = f.y * TILE, w = f.w * TILE, h = f.h * TILE;
+  const cx = x + w / 2;
+
+  // 池沿
+  c.fillStyle = '#9a958c';
+  c.beginPath(); c.ellipse(cx, y + h * 0.62, w * 0.46, h * 0.34, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#b5b0a6';
+  c.beginPath(); c.ellipse(cx, y + h * 0.58, w * 0.42, h * 0.30, 0, 0, Math.PI * 2); c.fill();
+  // 水面
+  c.fillStyle = '#72c6e0';
+  c.beginPath(); c.ellipse(cx, y + h * 0.58, w * 0.34, h * 0.24, 0, 0, Math.PI * 2); c.fill();
+  // 水波
+  const t = Math.sin(nowMs / 600) * 0.5 + 0.5;
+  c.strokeStyle = `rgba(255,255,255,${0.3 + t * 0.3})`;
+  c.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    const rr = 8 + i * 9 + t * 3;
+    c.beginPath(); c.ellipse(cx, y + h * 0.58, rr, rr * 0.7, 0, 0, Math.PI * 2); c.stroke();
+  }
+  // 中央小柱
+  c.fillStyle = '#a8a39a';
+  c.fillRect(cx - 5, y + h * 0.28, 10, h * 0.32);
+  c.fillStyle = '#c9c4ba';
+  c.fillRect(cx - 3, y + h * 0.28, 4, h * 0.30);
+  // 水柱
+  c.fillStyle = 'rgba(180,230,245,.7)';
+  c.fillRect(cx - 2, y + h * 0.10, 4, h * 0.22);
+  c.beginPath(); c.arc(cx, y + h * 0.10, 3.5, 0, Math.PI * 2); c.fill();
 }
 
 /* ---------------- 动物 ---------------- */

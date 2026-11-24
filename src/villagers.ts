@@ -32,13 +32,23 @@ export const SPOTS = {
   /** 池塘边，小渔钓鱼 */
   pondBank: { tx: 19, ty: 17, radius: 1.8 },
   /** 小镇广场 */
-  plaza: { tx: 39, ty: 10, radius: 2.5 },
+  plaza: { tx: 52, ty: 12, radius: 3 },
+  /** 酒馆门口 */
+  tavernFront: { tx: 41, ty: 6, radius: 1.4 },
+  /** 铁匠铺门口 */
+  smithFront: { tx: 46, ty: 6, radius: 1.4 },
+  /** 诊所门口 */
+  clinicFront: { tx: 51, ty: 6, radius: 1.4 },
+  /** 学堂门口 */
+  schoolFront: { tx: 56, ty: 6, radius: 1.4 },
+  /** 钟楼下 */
+  towerFoot: { tx: 60, ty: 6, radius: 1.2 },
   /** 杂货店门口 */
-  shopFront: { tx: 34, ty: 7, radius: 1.6 },
+  shopFront: { tx: 36, ty: 6, radius: 1.4 },
   /** 镇口，进出小镇的路 */
-  townGate: { tx: 34, ty: 11, radius: 1.6 },
+  townGate: { tx: 34, ty: 9, radius: 1.6 },
   /** 屋檐下（雨天避雨） */
-  underRoof: { tx: 36, ty: 7, radius: 1.2 }
+  underRoof: { tx: 36, ty: 6, radius: 1.0 }
 } as const;
 
 /** 按季节变化的「花最多的地方」——阿晴会追着花走 */
@@ -46,7 +56,7 @@ export function flowerSpot(season: Season): Spot {
   switch (season) {
     case 'spring': return { tx: 9, ty: 13, radius: 1.8 };   // 农场的花丛
     case 'summer': return { tx: 17, ty: 6, radius: 1.5 };
-    case 'autumn': return { tx: 45, ty: 10, radius: 1.8 };
+    case 'autumn': return { tx: 63, ty: 11, radius: 1.8 };
     default: return SPOTS.townGate;                          // 冬天没花，去镇口
   }
 }
@@ -216,10 +226,159 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       { en: 'do you like the town', zh: '你喜欢小镇吗' },
       { en: 'let us watch the stars tonight', zh: '今晚一起看星星吧' }
     ]
+  },
+
+  /* ================= 新镇民 ================= */
+
+  tavern: {
+    id: 'tavern', name: '阿梅', role: '酒馆老板娘', icon: '🍺', shirt: '#c9703f',
+    likes: ['food.', 'prod.egg'], dislikes: ['mat.stone'],
+    greet: '来啦？坐，今天有热汤。',
+    birthday: 3,
+    birthdayLine: '哟，还知道我今天生日？快坐下，我请你一杯。',
+    birthdayPhrase: { en: 'you came to my birthday', zh: '你来给我过生日' },
+    reactions: {
+      like: ['这东西经我的手，能变成好菜！', '哎呀，你懂我口味。', '收下了，回头给你留个座。'],
+      neutral: ['谢啦，我拿去切切看。', '嗯，有用的东西。'],
+      dislike: ['这个…我厨房里放不下。', '唉，我这只懂吃的。']
+    },
+    schedule: [
+      { from: 480, to: 1260, spot: SPOTS.tavernFront, doing: '招呼客人' },
+      { from: 1260, to: 1320, spot: SPOTS.plaza, doing: '收摊' }
+    ],
+    phrases: [
+      { en: 'the soup is hot today', zh: '今天的汤是热的' },
+      { en: 'everyone eats here at noon', zh: '中午大家都来这儿吃' },
+      { en: 'a warm meal fixes most things', zh: '一顿热饭能解决大部分事' },
+      { en: 'i hear everything in this town', zh: '这镇上什么事我都听得见' },
+      { en: 'sit down and rest a while', zh: '坐下歇会儿吧' }
+    ]
+  },
+
+  smith: {
+    id: 'smith', name: '老周', role: '铁匠', icon: '🔨', shirt: '#5a5a5a',
+    likes: ['mat.iron', 'mat.copper', 'mat.gem'], dislikes: ['flower.'],
+    greet: '东西放那儿。烫。',
+    birthday: 11,
+    birthdayLine: '……今天？唔。反正炉子不能停。',
+    birthdayPhrase: { en: 'you know my birthday', zh: '你知道我的生日' },
+    reactions: {
+      like: ['好料。能用。', '嗯，这个我熔得动。', '……谢了。'],
+      neutral: ['放着吧。', '哦。'],
+      dislike: ['我用不上这个。', '拿回去。']
+    },
+    schedule: [
+      { from: 480, to: 1140, spot: SPOTS.smithFront, doing: '打铁' },
+      { from: 1140, to: 1320, spot: SPOTS.plaza, doing: '收炉' }
+    ],
+    phrases: [
+      { en: 'the fire must not go out', zh: '炉火不能断' },
+      { en: 'good ore makes good tools', zh: '好矿出好工具' },
+      { en: 'metal remembers every blow', zh: '金属记得每一下敲打' },
+      { en: 'bring me ore and i will work', zh: '拿矿来，我就开工' }
+    ]
+  },
+
+  doctor: {
+    id: 'doctor', name: '小林', role: '医生', icon: '💊', shirt: '#e8eef0',
+    likes: ['flower.', 'crop.spinach'], dislikes: ['food.friedegg'],
+    greet: '脸色不太好哦。有好好吃饭吗？',
+    birthday: 19,
+    birthdayLine: '哎呀，被病人记住生日，这可真是……谢谢。',
+    birthdayPhrase: { en: 'i did not expect this', zh: '我没想到会这样' },
+    reactions: {
+      like: ['这个对身体好，我收下了。', '谢谢，我会用在诊室里。', '你很有心，记得自己也吃点好的。'],
+      neutral: ['谢谢。放这儿吧。', '嗯，我记下了。'],
+      dislike: ['这个…不太健康呢。', '少吃点这类东西哦。']
+    },
+    schedule: [
+      { from: 540, to: 1020, spot: SPOTS.clinicFront, doing: '看诊' },
+      { from: 1020, to: 1320, spot: SPOTS.plaza, doing: '散步' }
+    ],
+    phrases: [
+      { en: 'sleep well and eat well', zh: '睡好，吃好' },
+      { en: 'do not work until you drop', zh: '别干到倒下' },
+      { en: 'a walk helps more than medicine', zh: '散步比吃药管用' },
+      { en: 'rest is part of the work', zh: '休息也是干活的一部分' }
+    ]
+  },
+
+  kid: {
+    id: 'kid', name: '小满', role: '镇上的小孩', icon: '🎈', shirt: '#e8c84a',
+    likes: ['crop.strawberry', 'craft.jam', 'flower.'], dislikes: ['mat.stone'],
+    greet: '哇！你是农场来的吗？你家有牛吗！',
+    birthday: 7,
+    birthdayLine: '你居然记得！大人都不记得！',
+    birthdayPhrase: { en: 'nobody else remembered', zh: '别人都不记得' },
+    reactions: {
+      like: ['哇啊啊！给我的吗！', '我要拿给阿晴看！', '好好好，你最好了！'],
+      neutral: ['哦…谢谢。', '嗯，我收着。'],
+      dislike: ['这个不好玩。', '唔…我不要。']
+    },
+    schedule: [
+      { from: 360, to: 540, spot: SPOTS.plaza, doing: '跑来跑去' },
+      { from: 540, to: 900, spot: SPOTS.schoolFront, doing: '上课' },
+      { from: 900, to: 1320, spot: SPOTS.plaza, doing: '玩' }
+    ],
+    phrases: [
+      { en: 'do you have cows', zh: '你有牛吗' },
+      { en: 'i want to be a farmer too', zh: '我也想当农夫' },
+      { en: 'the fountain is cold in winter', zh: '冬天的喷泉好冷' },
+      { en: 'grandpa han tells good stories', zh: '韩爷爷会讲故事' }
+    ]
+  },
+
+  teacher: {
+    id: 'teacher', name: '老韩', role: '退休教师', icon: '📖', shirt: '#6b5a44',
+    likes: ['flower.', 'crop.pumpkin'], dislikes: ['food.ketchup'],
+    greet: '哦，年轻人。今天认了几个字？',
+    birthday: 23,
+    birthdayLine: '教了一辈子书，倒很少被人记住生日。多谢。',
+    birthdayPhrase: { en: 'a teacher is rarely remembered', zh: '老师很少被记得' },
+    reactions: {
+      like: ['好东西。知识之树结的果。', '这个我收下，用来讲课正好。', '你有心，胜过许多学生。'],
+      neutral: ['嗯，收下了。', '多谢。'],
+      dislike: ['这个…用处不大。', '不必了，谢谢。']
+    },
+    schedule: [
+      { from: 480, to: 780, spot: SPOTS.schoolFront, doing: '讲课' },
+      { from: 780, to: 1320, spot: SPOTS.plaza, doing: '晒太阳读书' }
+    ],
+    phrases: [
+      { en: 'words are seeds too', zh: '词语也是种子' },
+      { en: 'read a little every day', zh: '每天读一点' },
+      { en: 'a word learned is a field planted', zh: '学会一个词，就像种下一块地' },
+      { en: 'your grandfather read poorly', zh: '你爷爷识字不多' }
+    ]
+  },
+
+  traveler: {
+    id: 'traveler', name: '阿岚', role: '旅人', icon: '🎨', shirt: '#4a9a9a',
+    likes: ['flower.', 'fish.'], dislikes: ['mat.wood'],
+    greet: '这地方的光很好。我可能会多待几天。',
+    birthday: 31,
+    birthdayLine: '生日？在路上的人不太过这个。不过……谢谢。',
+    birthdayPhrase: { en: 'i stopped counting long ago', zh: '我早就不数了' },
+    reactions: {
+      like: ['这个颜色我喜欢。', '好，收进我的行囊。', '谢谢，我会画下它。'],
+      neutral: ['谢了，路上能用到。', '嗯，收下了。'],
+      dislike: ['太重了，背不动。', '这个我用不上。']
+    },
+    schedule: [
+      { from: 360, to: 600, spot: SPOTS.towerFoot, doing: '画钟楼' },
+      { from: 600, to: 1080, spot: SPOTS.plaza, doing: '写生' },
+      { from: 1080, to: 1320, spot: SPOTS.towerFoot, doing: '看夕阳' }
+    ],
+    phrases: [
+      { en: 'i have been to many towns', zh: '我去过很多小镇' },
+      { en: 'this light is good today', zh: '今天的光很好' },
+      { en: 'every town forgets slowly', zh: '每个镇子都在慢慢被忘记' },
+      { en: 'people here still stay', zh: '这里的人还留得住' }
+    ]
   }
 };
 
-export const VILLAGER_ORDER = ['farmer', 'fisher', 'shopkeeper', 'girl'];
+export const VILLAGER_ORDER = ['farmer', 'fisher', 'shopkeeper', 'girl', 'tavern', 'smith', 'doctor', 'kid', 'teacher', 'traveler'];
 
 /* ---------------- 好感 ---------------- */
 
@@ -295,7 +454,8 @@ export function createVillager(id: string): Villager {
   const y = b.minY + Math.random() * (b.maxY - b.minY);
   return {
     id, friendship: 0, talkedToday: false, giftedToday: false,
-    x, y, dir: 'down', moving: false, wanderT: Math.random() * 2, tx: x, ty: y
+    x, y, dir: 'down', moving: false, wanderT: Math.random() * 2, tx: x, ty: y,
+    active: false
   };
 }
 
@@ -327,7 +487,7 @@ export function updateVillagers(state: GameState, dt: number): void {
 
     // 刚从家里出来，或换了目的地而且很远 → 直接到场（视为「从别处赶来」）
     // 近距离则用 A* 真走过去，所以能绕开池塘、房屋、围栏
-    if (v.active === false || (v.spotKey !== spotKey && farFromGoal > 520)) {
+    if (!v.active || (v.spotKey !== spotKey && farFromGoal > 320)) {
       const sp = plan.spot;
       v.x = sp.tx * TILE + TILE / 2 + (Math.random() - 0.5) * TILE * 1.2;
       v.y = sp.ty * TILE + TILE / 2 + (Math.random() - 0.5) * TILE * 1.2;
@@ -377,7 +537,7 @@ export function updateVillagers(state: GameState, dt: number): void {
       if (nd < 4) {
         v.path.shift();
       } else {
-        const sp = 22;
+        const sp = 42;
         const step = Math.min(nd, sp * dt);
         v.x += (ndx / nd) * step;
         v.y += (ndy / nd) * step;

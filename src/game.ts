@@ -376,7 +376,11 @@ function normalizeState(s: GameState): void {
     if (typeof a.growDays !== 'number') a.growDays = 0;
     if (typeof a.pregnantDays !== 'number') a.pregnantDays = 0;
   }
-  if (!Array.isArray(s.villagers)) s.villagers = VILLAGER_ORDER.map((id) => createVillager(id));
+  // 旧档可能只有 4 个村民；把后来新增的补齐
+  if (!Array.isArray(s.villagers)) s.villagers = [];
+  for (const id of VILLAGER_ORDER) {
+    if (!s.villagers.some((v) => v.id === id)) s.villagers.push(createVillager(id));
+  }
 
   // 旧存档的 plots 只有第一块地，补齐到全部
   if (!Array.isArray(s.plots)) s.plots = [];

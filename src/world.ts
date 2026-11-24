@@ -5,7 +5,7 @@
 import type { Dir, Player, SceneId } from './types';
 
 export const TILE = 48;
-export const MAP_W = 50;
+export const MAP_W = 70;
 export const MAP_H = 22;
 export const VIEW_W = 960;
 export const VIEW_H = 600;
@@ -134,18 +134,43 @@ export const BUILDINGS = {
   barn: { x: 11, y: 14, w: 4, h: 2 }
 } as const;
 
-/** 小镇建筑（实心，挡路）；kind 用于渲染配色 */
-export interface TownBuilding { x: number; y: number; w: number; h: number; kind: 'store' | 'house'; roof: string }
+/** 小镇建筑（实心，挡路）；kind 用于渲染配色与交互 */
+export type TownBuildingKind = 'store' | 'house' | 'tavern' | 'smith' | 'clinic' | 'school' | 'tower';
+
+export interface TownBuilding {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: TownBuildingKind;
+  roof: string;
+  /** 门在建筑内的相对位置（tile）；有 door 表示能进去 */
+  door?: { dx: number; dy: number };
+}
+
+/** 北侧一条街 + 南侧民宅，中间是主街与广场 */
 export const TOWN_BUILDINGS: TownBuilding[] = [
-  { x: 34, y: 2, w: 4, h: 4, kind: 'store', roof: '#4a8fbe' },
-  { x: 39, y: 2, w: 4, h: 4, kind: 'house', roof: '#c9743f' },
-  { x: 44, y: 2, w: 4, h: 4, kind: 'house', roof: '#6fae4e' },
-  { x: 35, y: 12, w: 4, h: 4, kind: 'house', roof: '#b06a8f' },
-  { x: 42, y: 12, w: 4, h: 4, kind: 'house', roof: '#c9a23f' }
+  // ── 北侧（y2-5）──
+  { x: 34, y: 2, w: 4, h: 4, kind: 'store',  roof: '#4a8fbe', door: { dx: 2, dy: 3 } },
+  { x: 39, y: 2, w: 4, h: 4, kind: 'tavern', roof: '#c9563f', door: { dx: 2, dy: 3 } },
+  { x: 44, y: 2, w: 4, h: 4, kind: 'smith',  roof: '#8a8a8a', door: { dx: 2, dy: 3 } },
+  { x: 49, y: 2, w: 4, h: 4, kind: 'clinic', roof: '#e8e2d4', door: { dx: 2, dy: 3 } },
+  { x: 54, y: 2, w: 4, h: 4, kind: 'school', roof: '#a9743f', door: { dx: 2, dy: 3 } },
+  { x: 59, y: 1, w: 3, h: 5, kind: 'tower',  roof: '#6b6b6b' },
+  // ── 南侧（y14-17）──
+  { x: 34, y: 14, w: 4, h: 4, kind: 'house', roof: '#c9743f' },
+  { x: 39, y: 14, w: 4, h: 4, kind: 'house', roof: '#6fae4e' },
+  { x: 44, y: 14, w: 4, h: 4, kind: 'house', roof: '#b06a8f' },
+  { x: 49, y: 14, w: 4, h: 4, kind: 'house', roof: '#c9a23f' },
+  { x: 54, y: 14, w: 4, h: 4, kind: 'house', roof: '#7a8fb0' },
+  { x: 59, y: 14, w: 4, h: 4, kind: 'house', roof: '#9a7a5a' }
 ];
 
+/** 广场喷泉（地标，挡路） */
+export const TOWN_FOUNTAIN = { x: 51, y: 10, w: 3, h: 3 };
+
 /** 村民游走 / 玩家可行走的小镇开放区 */
-export const TOWN_OPEN = { x0: 33, y0: 6, x1: 47, y1: 11 };
+export const TOWN_OPEN = { x0: 33, y0: 6, x1: 67, y1: 13 };
 
 /** 是否落在小镇区域（排除杂草等） */
 export function inTownArea(tx: number): boolean {
@@ -182,7 +207,7 @@ export const OBJECTS: WorldObject[] = [
   { kind: 'bin', tx: 18, ty: 8, label: '出货箱' },
   { kind: 'order', tx: 10, ty: 5, label: '订购箱' },
   { kind: 'store', tx: 35, ty: 5, label: '杂货店' },
-  { kind: 'board', tx: 37, ty: 10, label: '委托板' }
+  { kind: 'board', tx: 47, ty: 11, label: '委托板' }
 ];
 
 const terrain = new Uint8Array(MAP_W * MAP_H);
@@ -359,22 +384,22 @@ function buildFarmTerrain(): void {
   set(FARM_DOORS.barn.tx, FARM_DOORS.barn.ty, T.DOOR);
   set(FARM_DOORS.mine.tx, FARM_DOORS.mine.ty, T.DOOR);
 
-  // 小路（农场）+ 向东延伸的进镇道路
+  // 小路（农场）+ 向东延伸的进镇主街
   setRect(4, 7, 15, 1, T.PATH);
   for (let x = 4; x <= 18; x++) set(x, 8, T.PATH);
   set(5, 8, T.PATH);
-  for (let x = 18; x <= 47; x++) { set(x, 7, T.PATH); set(x, 8, T.PATH); }
+  for (let x = 18; x < MAP_W; x++) { set(x, 7, T.PATH); set(x, 8, T.PATH); }
 
   // 农田（只铺第一块；第二块买地后由 unlockArea 铺上）
   setRect(FARM_AREAS[0].x, FARM_AREAS[0].y, FARM_AREAS[0].cols, FARM_AREAS[0].rows, T.SOIL);
 
-  // 小镇广场（街道南侧的一片空地）
-  setRect(38, 9, 7, 3, T.PATH);
+  // 小镇中央广场（主街南侧）
+  setRect(46, 9, 13, 5, T.PATH);
 
   // 花丛（可走过）
   const flowers: Array<[number, number]> = [
     [7, 10], [8, 14], [6, 14], [16, 14], [17, 6], [6, 11], [9, 9],
-    [33, 6], [47, 6], [33, 11], [47, 11], [36, 9], [45, 10]
+    [33, 6], [63, 6], [33, 12], [64, 12], [36, 12], [58, 9], [45, 12]
   ];
   for (const [x, y] of flowers) if (tileAt(x, y) === T.GRASS) set(x, y, T.FLOWER);
 }
@@ -418,6 +443,8 @@ export function isBlockedTile(x: number, y: number): boolean {
     for (const b of TOWN_BUILDINGS) {
       if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
     }
+    if (x >= TOWN_FOUNTAIN.x && x < TOWN_FOUNTAIN.x + TOWN_FOUNTAIN.w
+      && y >= TOWN_FOUNTAIN.y && y < TOWN_FOUNTAIN.y + TOWN_FOUNTAIN.h) return true;
   }
   return false;
 }

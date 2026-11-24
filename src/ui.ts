@@ -12,6 +12,16 @@ import type { DifficultyId } from './difficulty';
 import type { GameState } from './types';
 import type { TypingSession } from './typing';
 
+/** 场景切换的淡入：让「走进去」有一点仪式感，而不是硬切 */
+export function fadeScene(): void {
+  const cv = document.getElementById('cv');
+  if (!cv) return;
+  cv.classList.remove('scene-fade');
+  // 强制重排以便动画能重新触发
+  void cv.offsetWidth;
+  cv.classList.add('scene-fade');
+}
+
 export function $<T extends HTMLElement = HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`缺少元素 #${id}`);

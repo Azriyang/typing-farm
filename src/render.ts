@@ -9,7 +9,8 @@ import {
   areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos,
   FARM_DOORS, TOWN_FOUNTAIN
 } from './world';
-import type { TownBuildingKind } from './world';
+import type { TownBuildingKind, IndoorScene } from './world';
+import type { Weather } from './types';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
 import { villagerNear, VILLAGER_DEFS } from './villagers';
@@ -121,6 +122,7 @@ function drawBaseTerrain(c: Ctx) {
     drawBarn(c);
     drawTownBuildings(c);
   } else {
+    drawIndoorWalls(c, scene);
     drawIndoorLighting(c, scene);
     drawFurniture(c, scene);
   }
@@ -399,6 +401,149 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
 /* ---------------- 室内家具 ---------------- */
 
 /** 房间内一圈暖色光晕，让室内不像一块平的色板 */
+/* ---------------- 室内：墙体立面 ---------------- */
+
+/** 窗户在房间里的相对位置（0~1），底图与动态层共用 */
+export function windowRects(scene: string): Array<{ x: number; y: number; w: number; h: number }> {
+  const r = ROOMS[scene as IndoorScene];
+  if (!r) return [];
+  const L = r.x0 * TILE;
+  const R = (r.x1 + 1) * TILE;
+  const width = R - L;
+  const T0 = r.y0 * TILE;
+  const winY = T0 - TILE * 1.55;
+  const winW = 44;
+  const winH = 34;
+  // 房间宽就开两扇，窄就一扇
+  const two = width >= TILE * 11;
+  if (two) {
+    return [
+      { x: L + width * 0.22 - winW / 2, y: winY, w: winW, h: winH },
+      { x: L + width * 0.72 - winW / 2, y: winY, w: winW, h: winH }
+    ];
+  }
+  return [{ x: L + width / 2 - winW / 2, y: winY, w: winW, h: winH }];
+}
+
+/**
+ * 室内墙体：把上方画成「看得见墙面」的立面，两侧与下方只留墙沿。
+ * 这是让俯视室内「像房间」而不是「一堆砖」的关键。
+ */
+function drawIndoorWalls(c: Ctx, scene: string) {
+  const r = ROOMS[scene as IndoorScene];
+  if (!r) return;
+
+  const L = r.x0 * TILE;
+  const R = (r.x1 + 1) * TILE;
+  const T0 = r.y0 * TILE;
+  const B = (r.y1 + 1) * TILE;
+  const W = MAP_W * TILE;
+  const H = MAP_H * TILE;
+
+  // 1) 房间外压暗：突出「房间在一个更大的建筑内部」
+  c.fillStyle = 'rgba(8,6,5,.80)';
+  c.fillRect(0, 0, W, T0);
+  c.fillRect(0, B, W, H - B);
+  c.fillRect(0, 0, L, H);
+  c.fillRect(R, 0, W - R, H);
+
+  // 2) 上方墙立面（向外 2.6 格，能看到「墙面」）
+  const facadeH = TILE * 2.6;
+  const fy = T0 - facadeH;
+
+  // 墙面：上暗下亮的渐变（光从窗户和地面反弹）
+  const g = c.createLinearGradient(0, fy, 0, T0);
+  g.addColorStop(0, '#241a14');
+  g.addColorStop(0.30, '#463229');
+  g.addColorStop(0.72, '#6b5040');
+  g.addColorStop(1, '#7d6149');
+  c.fillStyle = g;
+  c.fillRect(L, fy, R - L, facadeH);
+
+  // 墙板竖纹
+  c.fillStyle = 'rgba(0,0,0,.14)';
+  for (let x = L + 30; x < R; x += 52) c.fillRect(x, fy + 6, 1, facadeH - 26);
+  // 横向腰线
+  c.fillStyle = 'rgba(255,230,190,.07)';
+  c.fillRect(L, fy + facadeH * 0.30, R - L, 1);
+
+  // 墙裙（踢脚线）
+  c.fillStyle = '#2e211a';
+  c.fillRect(L, T0 - 18, R - L, 18);
+  c.fillStyle = '#4a3527';
+  c.fillRect(L, T0 - 18, R - L, 3);
+  c.fillStyle = 'rgba(0,0,0,.22)';
+  c.fillRect(L, T0 - 3, R - L, 3);
+
+  // 3) 窗户框（玻璃颜色在动态层，随时间变）
+  for (const w of windowRects(scene)) {
+    // 外框
+    c.fillStyle = '#3a2a1e';
+    c.fillRect(w.x - 3, w.y - 3, w.w + 6, w.h + 6);
+    c.fillStyle = '#5a4230';
+    c.fillRect(w.x - 2, w.y - 2, w.w + 4, w.h + 4);
+    // 玻璃底色（中性，动态层会覆盖）
+    c.fillStyle = '#6a7a86';
+    c.fillRect(w.x, w.y, w.w, w.h);
+    // 窗棂
+    c.fillStyle = '#5a4230';
+    c.fillRect(w.x + w.w / 2 - 1, w.y, 3, w.h);
+    c.fillRect(w.x, w.y + w.h / 2 - 1, w.w, 3);
+    // 窗台
+    c.fillStyle = '#7d6149';
+    c.fillRect(w.x - 5, w.y + w.h + 2, w.w + 10, 4);
+    c.fillStyle = 'rgba(255,240,210,.18)';
+    c.fillRect(w.x - 5, w.y + w.h + 2, w.w + 10, 1);
+  }
+
+  // 4) 左右侧墙：一窄条，表现墙的厚度
+  c.fillStyle = '#4a3527';
+  c.fillRect(L - 10, T0, 10, B - T0);
+  c.fillRect(R, T0, 10, B - T0);
+  c.fillStyle = 'rgba(255,230,190,.10)';
+  c.fillRect(L - 10, T0, 3, B - T0);
+  c.fillStyle = 'rgba(0,0,0,.3)';
+  c.fillRect(R + 7, T0, 3, B - T0);
+
+  // 5) 下墙沿（低矮）
+  c.fillStyle = '#3a2a1e';
+  c.fillRect(L - 10, B, R - L + 20, 12);
+  c.fillStyle = '#5a4230';
+  c.fillRect(L - 10, B, R - L + 20, 3);
+}
+
+/** 室内的窗户天光：颜色随时间和天气变 */
+function drawIndoorWindowLight(c: Ctx, scene: string, time: number, weather: Weather) {
+  const wins = windowRects(scene);
+  if (wins.length === 0) return;
+
+  let tint: string;
+  let alpha: number;
+  if (weather === 'rain') { tint = '#8fa6b8'; alpha = 0.72; }
+  else if (weather === 'snow') { tint = '#cfdce8'; alpha = 0.78; }
+  else if (time < 420) { tint = '#5a6a8a'; alpha = 0.72; }        // 黎明前
+  else if (time < 540) { tint = '#ffd9a0'; alpha = 0.80; }        // 清晨
+  else if (time < 1020) { tint = '#fff4d0'; alpha = 0.86; }       // 白天
+  else if (time < 1140) { tint = '#ffb87a'; alpha = 0.82; }       // 傍晚
+  else { tint = '#2a3a5a'; alpha = 0.80; }                         // 夜
+
+  for (const w of wins) {
+    c.globalAlpha = alpha;
+    c.fillStyle = tint;
+    c.fillRect(w.x, w.y, w.w, w.h);
+    c.globalAlpha = 1;
+    // 斜向反光
+    c.fillStyle = 'rgba(255,255,255,.16)';
+    c.beginPath();
+    c.moveTo(w.x + 4, w.y + w.h);
+    c.lineTo(w.x + w.w * 0.55, w.y);
+    c.lineTo(w.x + w.w * 0.78, w.y);
+    c.lineTo(w.x + w.w * 0.3, w.y + w.h);
+    c.closePath();
+    c.fill();
+  }
+}
+
 function drawIndoorLighting(c: Ctx, scene: string) {
   const r = ROOMS[scene as 'house' | 'coop' | 'barn'];
   if (!r) return;
@@ -1449,6 +1594,12 @@ export function render(state: GameState, dt: number, nowMs: number) {
   if (!indoor) {
     if (state.weather === 'rain') drawRain(ctx, nowMs);
     else if (state.weather === 'snow') drawSnow(ctx, nowMs);
+  } else {
+    // 窗户的天光画在昼夜之后——夜里它就是房间里唯一的亮处
+    ctx.save();
+    ctx.translate(-camX, -camY);
+    drawIndoorWindowLight(ctx, sceneId, state.time, state.weather);
+    ctx.restore();
   }
 }
 

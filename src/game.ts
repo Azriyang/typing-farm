@@ -339,6 +339,7 @@ function enterMine(floor = 1): void {
   state.nodes.push(...makeMineNodes(floor));
   buildScene('mine');
   applySeason(seasonOfDay(state.day));
+  UI.fadeScene();
   const sp = MINE_ROOM.spawn;
   state.player.x = sp.tx * TILE + TILE / 2;
   state.player.y = sp.ty * TILE + TILE / 2;
@@ -1122,6 +1123,7 @@ function enterScene(id: 'house' | 'coop' | 'barn'): void {
   state.scene = id;
   buildScene(id);
   applySeason(seasonOfDay(state.day));
+  UI.fadeScene();
   const r = ROOMS[id];
   state.player.x = r.spawn.tx * TILE + TILE / 2;
   state.player.y = r.spawn.ty * TILE + TILE / 2;
@@ -1141,6 +1143,7 @@ function exitToFarm(): void {
   for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
   syncBlockers(state);
   applySeason(seasonOfDay(state.day));
+  UI.fadeScene();
   const spot = farmExitSpot(from);
   state.player.x = spot.tx * TILE + TILE / 2;
   state.player.y = spot.ty * TILE + TILE / 2;
@@ -1562,6 +1565,7 @@ function enterShop(kind: string): void {
   state.scene = id;
   buildScene(id);
   applySeason(seasonOfDay(state.day));
+  UI.fadeScene();
   const r = ROOMS[id];
   state.player.x = r.spawn.tx * TILE + TILE / 2;
   state.player.y = r.spawn.ty * TILE + TILE / 2;

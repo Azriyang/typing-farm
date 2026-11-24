@@ -16,6 +16,7 @@
     <div class="stat season"><span class="ico" id="hud-season-ico">🌸</span><b id="hud-season">春</b><span class="sub" id="hud-season-day">第1天</span></div>
     <div class="stat"><span class="ico">📅</span><b id="hud-day">1</b><span class="sub">天</span></div>
     <div class="stat"><span class="ico">🕒</span><b id="hud-clock">06:00</b></div>
+    <div class="stat diff" id="hud-diff" title="点击切换难度"><span class="ico" id="hud-diff-ico">🌤️</span><b id="hud-diff-name">标准</b></div>
     <div class="stat festival hidden" id="hud-festival"><span class="ico" id="hud-festival-ico">🌱</span><b id="hud-festival-name">播种祭</b></div>
     <div class="stat"><span class="ico" id="hud-weather-ico">☀️</span><b id="hud-weather">晴</b></div>
     <div class="stat coin"><span class="ico">🪙</span><b id="hud-coins">0</b></div>
@@ -87,6 +88,13 @@
       爷爷留下了一片荒芜的农场。<br>
       在这里，每一种农活都要用打字来完成 —— <code>water</code> 浇水、<code>hoe</code> 开垦、<code>harvest</code> 收获。
     </p>
+
+    <div class="diff-pick" id="diff-pick">
+      <div class="diff-pick-title">选择难度（用于新游戏；继续存档会沿用存档里的难度）</div>
+      <div class="diff-cards" id="diff-cards"></div>
+      <div class="diff-desc" id="diff-desc">时限正常，工具等级决定容错</div>
+    </div>
+
     <div class="title-actions">
       <button class="btn big" id="btn-new">开始新生活</button>
       <button class="btn big ghost hidden" id="btn-continue">继续存档</button>

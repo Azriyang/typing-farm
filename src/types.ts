@@ -219,6 +219,8 @@ export interface GameState {
   farmUnlocked: number;
   /** 当前所在场景 */
   scene: SceneId;
+  /** 全局难度 */
+  difficulty: 'easy' | 'normal' | 'hard';
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

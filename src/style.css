@@ -809,3 +809,79 @@ html, body {
 .shop-row .dur.ok { color: #4a8a3c; }
 .shop-row .dur.warn { color: #d9772f; }
 .shop-row .dur.bad { color: #c0392b; }
+/* ============================ 难度 ============================ */
+
+/* 顶栏难度徽章（可点） */
+.stat.diff { cursor: pointer; transition: all .15s; }
+.stat.diff:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.stat.diff b { font-size: 12px; }
+.stat.diff.easy { background: #eef7e6; border-color: #b6dca4; }
+.stat.diff.easy b { color: #4a8a3c; }
+.stat.diff.normal { background: #eef4fa; border-color: #b8d0e4; }
+.stat.diff.normal b { color: #3d6c93; }
+.stat.diff.hard { background: #fdeeea; border-color: #e8bdb2; }
+.stat.diff.hard b { color: #b8472f; }
+
+/* 标题页难度选择 */
+.diff-pick {
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  background: rgba(255, 252, 244, .7);
+  border: 2px solid #e0cda8;
+  border-radius: 12px;
+}
+.diff-pick-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a7050;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+.diff-cards { display: flex; gap: 8px; justify-content: center; }
+.diff-card {
+  flex: 1;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 6px;
+  background: #fffdf7;
+  border: 2px solid #e0cda8;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.diff-card:hover { transform: translateY(-2px); border-color: #c9a86a; }
+.diff-card.sel { border-color: #6a9a4e; background: #f1f9e8; box-shadow: 0 0 0 3px rgba(108, 180, 90, .22); }
+.diff-card.hard.sel { border-color: #c9563f; background: #fdf0ec; box-shadow: 0 0 0 3px rgba(201, 86, 63, .2); }
+.diff-card .dc-ico { font-size: 20px; line-height: 1; }
+.diff-card .dc-name { font-size: 13px; font-weight: 800; color: #4e3320; }
+.diff-desc {
+  margin-top: 9px;
+  font-size: 11.5px;
+  color: #8a7050;
+  line-height: 1.6;
+  min-height: 18px;
+}
+
+/* 游戏内难度列表 */
+.diff-list { display: flex; flex-direction: column; gap: 7px; }
+.diff-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 13px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.diff-row:hover { border-color: var(--gold); transform: translateX(2px); }
+.diff-row.on { border-color: var(--green-dark); background: #eef7e6; }
+.diff-row .dr-ico { font-size: 21px; line-height: 1; }
+.diff-row .dr-main { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.diff-row .dr-main b { font-size: 14px; }
+.diff-row .dr-desc { font-size: 11.5px; color: var(--ink-soft); }
+.diff-row .dr-check { color: var(--green-dark); font-weight: 900; font-size: 15px; }

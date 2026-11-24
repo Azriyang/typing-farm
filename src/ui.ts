@@ -4,9 +4,11 @@
 
 import { CFG } from './config';
 import { TOOLS, toolMaxDurability, durabilityRatio, DURABILITY_WARN } from './tools';
+import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyOf } from './difficulty';
 import { getDef } from './items';
 import { usedSlots } from './items';
 import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON, festivalOfDay } from './seasons';
+import type { DifficultyId } from './difficulty';
 import type { GameState } from './types';
 import type { TypingSession } from './typing';
 
@@ -107,6 +109,13 @@ export function syncHud(state: GameState): void {
   $('hud-season-ico').textContent = SEASON_ICON[season];
   $('hud-season-day').textContent = `第${dayInSeason(state.day)}天`;
 
+  // 难度徽章
+  const d = difficultyOf(state.difficulty);
+  $('hud-diff-ico').textContent = d.icon;
+  $('hud-diff-name').textContent = d.name;
+  $('hud-diff').className = 'stat diff ' + d.id;
+  $('hud-diff').title = `${d.desc}（点击切换）`;
+
   const fest = festivalOfDay(state.day);
   const festEl = $('hud-festival');
   if (fest) {
@@ -184,6 +193,27 @@ export function resetHotbarCache(): void {
   lastHotbarKey = '';
 }
 
+/* ---------------- 难度选择 ---------------- */
+
+/** 渲染标题页的难度卡片，返回当前选中项 */
+export function renderDiffPicker(
+  current: DifficultyId,
+  onPick: (id: DifficultyId) => void
+): void {
+  const cards = $('diff-cards');
+  cards.innerHTML = '';
+  for (const id of DIFFICULTY_ORDER) {
+    const d = DIFFICULTIES[id];
+    const el = document.createElement('button');
+    el.className = 'diff-card' + (id === current ? ' sel' : '') + ' ' + id;
+    el.innerHTML = `<span class="dc-ico">${d.icon}</span><span class="dc-name">${d.name}</span>`;
+    el.title = d.desc;
+    el.addEventListener('click', () => onPick(id));
+    cards.appendChild(el);
+  }
+  $('diff-desc').textContent = DIFFICULTIES[current].desc;
+}
+
 /* ---------------- 打字面板 ---------------- */
 
 let lastTypingKey = '';
@@ -202,12 +232,12 @@ export function wordMarkup(word: string, typed: string): string {
   return out;
 }
 
-export function syncTyping(session: TypingSession, actionLabel: string, combo: number): void {
+export function syncTyping(session: TypingSession, actionLabel: string, combo: number, showZh = true): void {
   const card = $('typing-card');
   const nowWord = session.currentWord;
 
   const key = nowWord
-    ? `${session.index}|${session.typed}|${actionLabel}|${combo}|${session.words.map((w) => w.text).join(',')}`
+    ? `${session.index}|${session.typed}|${actionLabel}|${combo}|${showZh}|${session.words.map((w) => w.text).join(',')}`
     : `idle|${actionLabel}|${combo}`;
   if (key === lastTypingKey) {
     if (nowWord) updateTimer(session);
@@ -228,7 +258,8 @@ export function syncTyping(session: TypingSession, actionLabel: string, combo: n
 
   card.className = 'typing-card active';
   $('t-action').textContent = actionLabel;
-  $('t-zh').textContent = nowWord.zh;
+  // 挑战难度不给中文提示
+  $('t-zh').textContent = showZh ? nowWord.zh : '\u3000';
   $('t-en').innerHTML = wordMarkup(nowWord.text, session.typed);
 
   let chain = '';

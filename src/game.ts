@@ -19,6 +19,10 @@ import {
   ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt
 } from './world';
 import {
+  DIFFICULTY_ORDER, difficultyOf, applyDifficulty, shiftBand
+} from './difficulty';
+import type { DifficultyId } from './difficulty';
+import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
 import {
@@ -73,6 +77,28 @@ interface Pending {
 
 let pending: Pending | null = null;
 let currentLabel = '走近田地，按空格开始劳作';
+/** 标题页/游戏内选择的难度（newState 会重置，需单独记住） */
+let chosenDifficulty: DifficultyId = 'normal';
+
+/** 当前难度定义 */
+function diff() {
+  return difficultyOf(state.difficulty);
+}
+
+/** 把难度套进一次打字的容错与时限 */
+function typingParams(baseTolerance: number, baseTimeMult: number) {
+  return applyDifficulty(diff(), baseTolerance, baseTimeMult);
+}
+
+/** 按难度调整词长档位（BANDS 共 7 档） */
+function bandFor(band: number): number {
+  return shiftBand(diff(), band, 6);
+}
+
+/** 超时损失多少体力（按难度） */
+function failLoss(p: Pending): number {
+  return Math.max(1, Math.ceil(p.stamina * diff().failPenalty));
+}
 
 /* ---------------- 钓鱼状态 ---------------- */
 
@@ -99,7 +125,8 @@ const session = new TypingSession({
     } else {
       Sound.play('error');
       UI.flashError();
-      state.combo = 0;
+      // 轻松难度打错不清连击，给新手正反馈
+      if (diff().comboBreakOnError) state.combo = 0;
     }
   },
   onComplete: (r) => {
@@ -172,13 +199,13 @@ const session = new TypingSession({
     Sound.play('fail');
 
     if (p && (p.kind === 'fishCast' || p.kind === 'fishReel')) {
-      if (p.kind === 'fishCast') state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
+      if (p.kind === 'fishCast') state.stamina = Math.max(0, state.stamina - failLoss(p));
       escapeFish(p.kind === 'fishCast' ? '手忙脚乱，鱼线缠住了' : '鱼挣脱了');
       return;
     }
 
     if (p && (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear' || p.kind === 'breed')) {
-      state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
+      state.stamina = Math.max(0, state.stamina - failLoss(p));
       UI.toast('超时了……动物歪着头看你', 'bad');
       if (state.stamina <= 0) { faint(); return; }
       const a = p.animalId ? animalById(state, p.animalId) : null;
@@ -187,7 +214,7 @@ const session = new TypingSession({
     }
 
     if (p && p.kind === 'chat') {
-      state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
+      state.stamina = Math.max(0, state.stamina - failLoss(p));
       UI.toast('没接上话……村民笑了笑没在意', 'bad');
       if (state.stamina <= 0) { faint(); return; }
       const v = p.villagerId ? villagerById(state, p.villagerId) : null;
@@ -196,9 +223,11 @@ const session = new TypingSession({
     }
 
     if (p) {
-      const half = Math.ceil(p.stamina / 2);
-      state.stamina = Math.max(0, state.stamina - half);
-      UI.toast('超时了！手忙脚乱，白费了一半力气', 'bad');
+      state.stamina = Math.max(0, state.stamina - failLoss(p));
+      UI.toast(
+        diff().id === 'easy' ? '超时了……力气白费了一点' : '超时了！手忙脚乱，白费了一半力气',
+        'bad'
+      );
       if (state.stamina <= 0) faint();
     }
     currentLabel = '走近田地，按空格开始劳作';
@@ -259,6 +288,7 @@ function normalizeState(s: GameState): void {
   // 旧存档没有这个字段 → 只解锁第一块（与它的 plots 数量一致）
   if (typeof s.farmUnlocked !== 'number') s.farmUnlocked = 1;
   if (s.scene !== 'house' && s.scene !== 'coop' && s.scene !== 'barn') s.scene = 'farm';
+  if (s.difficulty !== 'easy' && s.difficulty !== 'hard') s.difficulty = 'normal';
 }
 
 function newState(): GameState {
@@ -304,6 +334,7 @@ function newState(): GameState {
     villagers: VILLAGER_ORDER.map((id) => createVillager(id)),
     farmUnlocked: 1,
     scene: 'farm',
+    difficulty: 'normal',
     autoSwitch: true,
     todayCleared: 0
   };
@@ -660,7 +691,7 @@ function startFishing(): void {
 
   const tier = state.tools.rod.tier;
   const t = tierInfo(tier);
-  const castWord = makeWord('fish', TOOLS.rod.band, '抛竿');
+  const castWord = makeWord('fish', bandFor(TOOLS.rod.band), '抛竿');
 
   pending = {
     kind: 'fishCast',
@@ -677,7 +708,8 @@ function startFishing(): void {
   fishing.phase = 'idle';
   UI.resetTypingCache();
   UI.resetFishingCache();
-  session.start([castWord], t.tolerance, t.time, performance.now());
+  const dp = typingParams(t.tolerance, t.time);
+  session.start([castWord], dp.tolerance, dp.timeMult, performance.now());
 }
 
 function beginWaiting(): void {
@@ -733,7 +765,8 @@ function onReelPress(now: number): void {
   UI.resetFishingCache();
   // 收线词的难度跟着这条鱼的价值走：稀有的鱼要打更长的词
   const reelWord = makeWord('fish', bandForValue(fish.price), `收线 · ${fish.zh}`);
-  session.start([reelWord], t.tolerance, t.time, performance.now());
+  const dp = typingParams(t.tolerance, t.time);
+  session.start([reelWord], dp.tolerance, dp.timeMult, performance.now());
 }
 
 function finishReel(perfect: boolean): void {
@@ -822,15 +855,15 @@ function collectPlots(info: ActionInfo): number[] {
 function buildWords(info: ActionInfo, crop: CropId | null): Word[] {
   switch (info.kind) {
     case 'till':
-      return makeWords('farm', TOOLS.hoe.band, info.label, 1);
+      return makeWords('farm', bandFor(TOOLS.hoe.band), info.label, 1);
     case 'water':
-      return makeWords('farm', TOOLS.can.band, info.label, 1);
+      return makeWords('farm', bandFor(TOOLS.can.band), info.label, 1);
     case 'plant':
-      return makeWords('farm', 1, info.label, 1);
+      return makeWords('farm', bandFor(1), info.label, 1);
     case 'harvest': {
       // 收获两词连打，难度跟着作物的售价走
       const price = crop ? CROPS[crop].price : 120;
-      return makeWords('farm', bandForValue(price), info.label, 2);
+      return makeWords('farm', bandFor(bandForValue(price)), info.label, 2);
     }
     case 'chop':
     case 'mine':
@@ -838,7 +871,7 @@ function buildWords(info: ActionInfo, crop: CropId | null): Word[] {
     case 'fish': {
       const tool = (info.tool ?? 'hoe') as ToolId;
       const def = TOOLS[tool];
-      return makeWords(def.wordCat, def.band, info.label, repeatCount(tool));
+      return makeWords(def.wordCat, bandFor(def.band), info.label, repeatCount(tool));
     }
     default:
       return [];
@@ -903,7 +936,8 @@ function startAction(info: ActionInfo): void {
     : info.label;
 
   UI.resetTypingCache();
-  session.start(words, t.tolerance, t.time * timeScale, performance.now());
+  const dp = typingParams(t.tolerance, t.time * timeScale);
+  session.start(words, dp.tolerance, dp.timeMult, performance.now());
 }
 
 function cropIdFromSeed(seedItemId: string | null): CropId | null {
@@ -1099,13 +1133,13 @@ function animalCost(action: AnimalAction): { stamina: number; time: number } {
 
 function buildAnimalWords(action: AnimalAction): Word[] {
   switch (action) {
-    case 'feed': return makeWords('animal', 1, '喂食', 1);
-    case 'collect': return makeWords('animal', 1, '捡蛋', 1);
-    case 'milk': return makeWords('animal', 0, '挤奶', 3);
-    case 'pet': return makeWords('animal', 0, '抚摸', 1);
+    case 'feed': return makeWords('animal', bandFor(1), '喂食', 1);
+    case 'collect': return makeWords('animal', bandFor(1), '捡蛋', 1);
+    case 'milk': return makeWords('animal', bandFor(0), '挤奶', 3);
+    case 'pet': return makeWords('animal', bandFor(0), '抚摸', 1);
     // 剪毛：三连短词，像剪刀一下下的节奏
-    case 'shear': return makeWords('animal', 0, '剪毛', 3);
-    case 'breed': return makeWords('animal', 2, '配种', 1);
+    case 'shear': return makeWords('animal', bandFor(0), '剪毛', 3);
+    case 'breed': return makeWords('animal', bandFor(2), '配种', 1);
   }
 }
 
@@ -1242,7 +1276,8 @@ function startBreed(a: Animal, partner: Animal): void {
   };
   currentLabel = `配种 · ${animalTitle(a)} & ${animalTitle(partner)}`;
   UI.resetTypingCache();
-  session.start(buildAnimalWords('breed'), 0, 1, performance.now());
+  const dp = typingParams(0, 1);
+  session.start(buildAnimalWords('breed'), dp.tolerance, dp.timeMult, performance.now());
 }
 
 function startAnimalAction(a: Animal, action: AnimalAction): void {
@@ -1270,7 +1305,8 @@ function startAnimalAction(a: Animal, action: AnimalAction): void {
   };
   currentLabel = `${label} · ${animalTitle(a)}`;
   UI.resetTypingCache();
-  session.start(buildAnimalWords(action), 0, 1, performance.now());
+  const dp = typingParams(0, 1);
+  session.start(buildAnimalWords(action), dp.tolerance, dp.timeMult, performance.now());
 }
 
 function applyAnimalAction(p: Pending, perfect: boolean): void {
@@ -1407,7 +1443,8 @@ function startChat(v: Villager): void {
   currentLabel = `和 ${def.name} 聊天`;
   UI.resetTypingCache();
   const word: Word = { text: phrase.en, zh: phrase.zh, diff: difficulty(phrase.en) };
-  session.start([word], 0, 1, performance.now());
+  const dp = typingParams(0, 1);
+  session.start([word], dp.tolerance, dp.timeMult, performance.now());
 }
 
 function applyChat(p: Pending, perfect: boolean): void {
@@ -2436,7 +2473,7 @@ function frame(ts: number): void {
     } else if (fishing.phase === 'bite') {
       UI.syncFishing('bite', (fishing.biteEnd - ts) / fishing.window, currentLabel);
     } else {
-      UI.syncTyping(session, currentLabel, state.combo);
+      UI.syncTyping(session, currentLabel, state.combo, diff().showZhHint);
     }
     UI.renderHotbar(state, selectSlot);
   }
@@ -2520,8 +2557,46 @@ function onKeyUp(e: KeyboardEvent): void {
 
 /* ---------------- 启动 ---------------- */
 
+/** 游戏内切换难度 */
+function openDifficulty(): void {
+  const cur = state.difficulty;
+  const rows = DIFFICULTY_ORDER.map((id) => {
+    const d = difficultyOf(id);
+    const on = id === cur ? ' on' : '';
+    return `<div class="diff-row${on}" data-diff="${id}">
+      <span class="dr-ico">${d.icon}</span>
+      <span class="dr-main"><b>${d.name}</b><span class="dr-desc">${d.desc}</span></span>
+      ${on ? '<span class="dr-check">✓</span>' : ''}
+    </div>`;
+  }).join('');
+
+  UI.showModal(
+    '难度',
+    `<p class="dim">难度只影响打字手感（时限、容错、词长、失误惩罚），不影响收益。下次打字生效。</p>
+     <div class="diff-list">${rows}</div>`,
+    [{ label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-diff]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.diff as DifficultyId;
+      state.difficulty = id;
+      chosenDifficulty = id;
+      save();
+      UI.hideModal();
+      UI.toast(`难度切换为「${difficultyOf(id).name}」`, 'good');
+      UI.syncHud(state);
+    });
+  });
+}
+
 function startGame(fresh: boolean): void {
-  if (fresh) state = newState();
+  if (fresh) {
+    state = newState();
+    // 用标题页选的难度（newState 会重置成 normal）
+    state.difficulty = chosenDifficulty;
+  }
+  chosenDifficulty = state.difficulty;
   restoreScene();
   running = true;
   UI.hideHint();
@@ -2569,6 +2644,20 @@ function setupTitle(): void {
   const btnCont = UI.$('btn-continue');
 
   if (hasSave()) btnCont.classList.remove('hidden');
+
+  // 标题页难度选择
+  const pick = (id: DifficultyId): void => {
+    chosenDifficulty = id;
+    state.difficulty = id;
+    UI.renderDiffPicker(id, pick);
+  };
+  UI.renderDiffPicker(state.difficulty, pick);
+
+  // 顶栏难度徽章 → 游戏内切换
+  UI.$('hud-diff').addEventListener('click', () => {
+    if (!running) return;
+    openDifficulty();
+  });
 
   btnNew.addEventListener('click', () => startGame(true));
   btnCont.addEventListener('click', () => {

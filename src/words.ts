@@ -13,6 +13,7 @@ import type { Word } from './types';
 import { storage } from './platform';
 import { CET4_WORDS } from './cet4';
 import type { WordEntry } from './cet4';
+import { hasSeen, isMastered, remainingNewQuota, markSeen, maskFor } from './learning';
 
 export type { WordEntry };
 
@@ -446,62 +447,85 @@ function candidates(cat: WordCategory, band: Band): WordEntry[] {
   return builtInFor(cat, band);
 }
 
-/* ---------------- 洗牌袋 + 近期避让 ---------------- */
+/* ---------------- 取词：按学习进度加权 ---------------- */
 
-interface Bag {
-  version: number;
-  words: WordEntry[];
-}
-
-const bags = new Map<string, Bag>();
-/** 最近打过的词（跨动作），尽量避免短期内重复 */
+/** 最近出现过的词，避免紧接着重复同一个（提高间隔，但不再「一轮内绝不重复」） */
 const recent: string[] = [];
-const RECENT_MAX = 8;
+const RECENT_MAX = 12;
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/** 从某档的洗牌袋里取一个词；袋空了才重洗，保证一轮内不重复 */
-function drawFromBag(cat: WordCategory, bandIndex: number, list: WordEntry[]): WordEntry {
-  const key = `${cat}:${bandIndex}`;
-  let bag = bags.get(key);
-  if (!bag || bag.version !== libraryVersion || bag.words.length === 0) {
-    bag = { version: libraryVersion, words: shuffle(list) };
-    bags.set(key, bag);
-  }
-
-  // 优先取不在近期记录里的词
-  let idx = bag.words.findIndex((w) => !recent.includes(w.en));
-  if (idx < 0) idx = 0;
-  const entry = bag.words.splice(idx, 1)[0];
-
+/** 在一组候选里随机取一个，尽量避开刚出现过的 */
+function randomFrom(list: WordEntry[]): WordEntry {
+  const fresh = list.filter((e) => !recent.includes(e.en));
+  const src = fresh.length > 0 ? fresh : list;
+  const entry = src[Math.floor(Math.random() * src.length)];
   recent.push(entry.en);
   if (recent.length > RECENT_MAX) recent.shift();
   return entry;
 }
 
-/** 按类别与难度取一个词条；该档没词就向邻近档借 */
-export function pickEntry(cat: WordCategory, bandIndex: number): WordEntry {
+/**
+ * 按学习状态取词。这是「能记住单词」的核心：
+ * - 学过的但没掌握 → 高优先（该复习了），但刚出现过的不选
+ * - 没见过的 → 受每日配额限制
+ * - 已掌握 → 低优先（偶尔回顾）
+ */
+function pickByProgress(cat: WordCategory, bandIndex: number): WordEntry | null {
   const b = Math.max(0, Math.min(BANDS.length - 1, bandIndex));
 
+  // 该档没词就向邻近档借
   for (let spread = 0; spread < BANDS.length; spread++) {
     for (const sign of spread === 0 ? [0] : [-1, 1]) {
       const bi = b + sign * spread;
       if (bi < 0 || bi >= BANDS.length) continue;
-      const list = candidates(cat, BANDS[bi]);
-      if (list.length > 0) return drawFromBag(cat, bi, list);
+      const pool = candidates(cat, BANDS[bi]);
+      if (pool.length === 0) continue;
+
+      // 刚出现过的词全部排除，保证有间隔
+      const available = pool.filter((e) => !recent.includes(e.en));
+
+      const split = (list: WordEntry[]) => {
+        const learning: WordEntry[] = [];
+        const mastered: WordEntry[] = [];
+        const fresh: WordEntry[] = [];
+        for (const e of list) {
+          if (isMastered(e.en)) mastered.push(e);
+          else if (hasSeen(e.en)) learning.push(e);
+          else fresh.push(e);
+        }
+        return { learning, mastered, fresh };
+      };
+
+      const first = split(available.length > 0 ? available : pool);
+
+      // 1) 该复习的最优先（70%）
+      if (first.learning.length > 0 && Math.random() < 0.7) {
+        return randomFrom(first.learning);
+      }
+      // 2) 新词，受每日配额限制
+      if (first.fresh.length > 0 && remainingNewQuota() > 0) {
+        return randomFrom(first.fresh);
+      }
+      // 3) 已掌握的词回顾
+      if (first.mastered.length > 0) return randomFrom(first.mastered);
+      // 4) 配额用完 → 只复习学过的（允许重复，同一天重复打对不计数）
+      if (first.learning.length > 0) return randomFrom(first.learning);
+
+      // 5) 最后一层：整个池子里找学过的（哪怕刚出现过）
+      const learned = pool.filter((e) => hasSeen(e.en) && !isMastered(e.en));
+      if (learned.length > 0) return randomFrom(learned);
+
+      // 6) 实在没有可复习的（开局第一天）才出新词
+      if (first.fresh.length > 0) return randomFrom(first.fresh);
     }
   }
+  return null;
+}
 
-  // 兜底：该类别任何可用词
-  const all = candidates(cat, { min: 0, max: 999, label: '' });
-  if (all.length > 0) return drawFromBag(cat, -1, all);
+/** 按类别与难度取一个词条 */
+export function pickEntry(cat: WordCategory, bandIndex: number): WordEntry {
+  const picked = pickByProgress(cat, bandIndex);
+  if (picked) return picked;
+  // 极端兜底
   return { en: 'farm', zh: '农场' };
 }
 
@@ -515,7 +539,15 @@ export function makeWord(cat: WordCategory, bandIndex: number, zh: string): Word
   const entry = pickEntry(cat, bandIndex);
   // 优先用词条自带的释义，其次查内置词义表，最后退回动作名
   const meaning = entry.zh || WORD_ZH[entry.en] || zh;
-  return { text: entry.en, zh: meaning, diff: difficulty(entry.en) };
+  // 先按「遇到之前的」状态决定提示（首次要完整显示），再记录这次遇到
+  const mask = maskFor(entry.en);
+  markSeen(entry.en);
+  return {
+    text: entry.en,
+    zh: meaning,
+    diff: difficulty(entry.en),
+    mask
+  };
 }
 
 /** 取 n 个词（洗牌袋保证不重复） */

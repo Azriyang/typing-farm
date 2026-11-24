@@ -901,3 +901,30 @@ html, body {
 .builtin-set .bs-main b { font-size: 13.5px; }
 .builtin-set .bs-meta { font-size: 11.5px; color: var(--ink-soft); }
 .words-list .wr-meta { font-size: 11.5px; }
+/* ---- 学习进度 ---- */
+.learn-bar {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.learn-bar .lb-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 4px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 9px;
+}
+.learn-bar .lb-k { font-size: 10.5px; color: var(--ink-soft); }
+.learn-bar .lb-item b { font-size: 17px; color: #4e3320; }
+.learn-bar .lb-item b.ok { color: #4a8a3c; }
+.learn-bar .lb-sub { font-size: 11px; color: var(--ink-soft); font-weight: 400; }
+
+/* 挖空的字母：比正常字母更淡、带下划线的感觉 */
+#t-en .masked {
+  color: rgba(90, 70, 50, .28);
+  font-weight: 400;
+}

@@ -222,12 +222,25 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] ?? c));
 }
 
-export function wordMarkup(word: string, typed: string): string {
+/**
+ * 渲染要打的单词。
+ * mask > 0 时，从该位置起的字母在**未输入前**显示为下划线——
+ * 逼玩家从中文想起英文，而不是照着抄（抄写不产生记忆）。
+ * 已经打出的字符照常显示，所以玩家仍能确认自己打对没有。
+ */
+export function wordMarkup(word: string, typed: string, mask = 0): string {
   let out = '';
   for (let i = 0; i < word.length; i++) {
-    const ch = word[i] === ' ' ? '&nbsp;' : escapeHtml(word[i]);
-    const cls = i < typed.length ? 'done' : i === typed.length ? 'next' : '';
-    out += `<span class="${cls}">${ch}</span>`;
+    const raw = word[i];
+    const ch = raw === ' ' ? '&nbsp;' : escapeHtml(raw);
+    const isTyped = i < typed.length;
+    const hidden = mask > 0 && i >= mask && !isTyped;
+    const cls = isTyped ? 'done' : i === typed.length ? 'next' : '';
+    if (hidden) {
+      out += `<span class="masked">_</span>`;
+    } else {
+      out += `<span class="${cls}">${ch}</span>`;
+    }
   }
   return out;
 }
@@ -260,7 +273,7 @@ export function syncTyping(session: TypingSession, actionLabel: string, combo: n
   $('t-action').textContent = actionLabel;
   // 中文提示始终显示——顺带记住词义，隐藏它只是剥夺信息，不是增加难度
   $('t-zh').textContent = nowWord.zh;
-  $('t-en').innerHTML = wordMarkup(nowWord.text, session.typed);
+  $('t-en').innerHTML = wordMarkup(nowWord.text, session.typed, nowWord.mask ?? 0);
 
   let chain = '';
   for (let i = 0; i < session.words.length; i++) {

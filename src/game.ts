@@ -23,6 +23,9 @@ import {
 } from './difficulty';
 import type { DifficultyId } from './difficulty';
 import {
+  markCorrect, markWrong, startDay as startLearnDay, stats as learnStats
+} from './learning';
+import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
 import {
@@ -127,12 +130,20 @@ const session = new TypingSession({
       UI.flashError();
       // 轻松难度打错不清连击，给新手正反馈
       if (diff().comboBreakOnError) state.combo = 0;
+      // 记一笔错误，影响这个词的后续出现频率
+      const w = session.currentWord;
+      if (w) markWrong(w.text);
     }
   },
   onComplete: (r) => {
     const p = pending;
     pending = null;
     if (!p) return;
+
+    // 打对：只有跨天累计才算「学会」（照着抄不算）
+    for (const w of session.words) {
+      if (r.perfect) markCorrect(w.text, state.day);
+    }
 
     if (p.kind === 'fishCast') {
       if (r.perfect) state.combo++;
@@ -2088,6 +2099,19 @@ function renderWords(): void {
       </div>`
     : `<div class="wf-row"><button class="btn small" id="ws-new">＋ 新建词库</button></div>`;
 
+  const ls = learnStats();
+  const learnRow = `
+    <div class="learn-bar">
+      <div class="lb-item"><span class="lb-k">已学</span><b>${ls.seen}</b></div>
+      <div class="lb-item"><span class="lb-k">已掌握</span><b class="ok">${ls.mastered}</b></div>
+      <div class="lb-item"><span class="lb-k">今日新词</span><b>${ls.todayNew}<span class="lb-sub">/${ls.quota}</span></b></div>
+    </div>
+    <p class="dim cov-note">
+      「掌握」= 在 <b>3 个不同天</b>各打对这个词。同一天重复打只算一次——
+      所以照着屏幕抄是没有用的。
+      见过的词会被<b>挖空</b>（只留首字母），逼你从中文想起英文。
+    </p>`;
+
   const cet4Row = `
     <div class="builtin-set ${isCet4Enabled() ? 'on' : ''}">
       <div class="bs-main">
@@ -2105,6 +2129,7 @@ function renderWords(): void {
        价值越高、词越难。难度不只看长度——重复字符、左右手交替都算在内。
      </p>
      <p class="dim">当前可用词数：${stats}</p>
+     ${learnRow}
      ${cet4Row}
      ${coverage}
      ${listHtml}
@@ -2321,6 +2346,7 @@ function sleep(fainted = false): void {
   settleVillagersOvernight(state);
 
   state.day++;
+  startLearnDay(state.day);
   state.stats.daysPlayed++;
   state.time = CFG.DAY_START;
   state.stamina = CFG.STAMINA_MAX;
@@ -2627,6 +2653,8 @@ function startGame(fresh: boolean): void {
     state.difficulty = chosenDifficulty;
   }
   chosenDifficulty = state.difficulty;
+  // 初始化学习进度到当前日期（每日新词配额按天重置）
+  startLearnDay(state.day);
   restoreScene();
   running = true;
   UI.hideHint();

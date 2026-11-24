@@ -10,7 +10,15 @@ export type CropId =
   | 'corn'
   | 'pumpkin'
   | 'strawberry'
-  | 'spinach';
+  | 'spinach'
+  /* 新增 7 种：重点补冬夏两季 */
+  | 'onion'
+  | 'carrot'
+  | 'radish'
+  | 'pepper'
+  | 'eggplant'
+  | 'broccoli'
+  | 'melon';
 
 export type ToolId = 'hoe' | 'can' | 'axe' | 'pick' | 'sickle' | 'rod';
 

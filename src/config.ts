@@ -52,11 +52,67 @@ export const CROPS: Record<CropId, CropDef> = {
     days: 4, price: 150, seed: 50,
     leaf: '#3f7a44', fruit: '#5aa84f', shape: 'leafy', emoji: '🥗',
     season: 'winter'
+  },
+
+  /* ---------------- 新增作物 ---------------- */
+  // 春季
+  onion: {
+    id: 'onion', zh: '洋葱', en: 'onion',
+    days: 4, price: 165, seed: 55,
+    leaf: '#6a9a4e', fruit: '#d8b0d8', shape: 'root', emoji: '🧅',
+    season: 'spring'
+  },
+  // 夏季
+  pepper: {
+    id: 'pepper', zh: '辣椒', en: 'pepper',
+    days: 4, price: 185, seed: 62,
+    leaf: '#4f9a44', fruit: '#d93a2b', shape: 'long', emoji: '🌶️',
+    season: 'summer'
+  },
+  melon: {
+    id: 'melon', zh: '西瓜', en: 'melon',
+    days: 7, price: 470, seed: 158,
+    leaf: '#4a8f3e', fruit: '#5aa84f', shape: 'gourd', emoji: '🍉',
+    season: 'summer'
+  },
+  // 秋季
+  eggplant: {
+    id: 'eggplant', zh: '茄子', en: 'eggplant',
+    days: 5, price: 245, seed: 82,
+    leaf: '#4a8a44', fruit: '#6b4a8a', shape: 'long', emoji: '🍆',
+    season: 'autumn'
+  },
+  // 冬季（原本只有菠菜一种，补到 4 种）
+  carrot: {
+    id: 'carrot', zh: '胡萝卜', en: 'carrot',
+    days: 3, price: 115, seed: 38,
+    leaf: '#5a9a48', fruit: '#e8823a', shape: 'root', emoji: '🥕',
+    season: 'winter'
+  },
+  radish: {
+    id: 'radish', zh: '芜菁', en: 'radish',
+    days: 4, price: 160, seed: 52,
+    leaf: '#6aa84e', fruit: '#e8e0e8', shape: 'root', emoji: '🥬',
+    season: 'winter'
+  },
+  broccoli: {
+    id: 'broccoli', zh: '西兰花', en: 'broccoli',
+    days: 6, price: 330, seed: 110,
+    leaf: '#3f7a44', fruit: '#4a8a4a', shape: 'leafy', emoji: '🥦',
+    season: 'winter'
   }
 };
 
+/** 商店与图鉴顺序：按季节分组，同季按生长期从短到长 */
 export const CROP_ORDER: CropId[] = [
-  'turnip', 'potato', 'strawberry', 'tomato', 'corn', 'cabbage', 'pumpkin', 'spinach'
+  // 春
+  'turnip', 'onion', 'potato', 'strawberry',
+  // 夏
+  'pepper', 'tomato', 'corn', 'melon',
+  // 秋
+  'cabbage', 'eggplant', 'pumpkin',
+  // 冬
+  'carrot', 'spinach', 'radish', 'broccoli'
 ];
 
 /* ---------------- 词库 ---------------- */

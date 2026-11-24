@@ -18,7 +18,7 @@ export type Dir = 'down' | 'up' | 'left' | 'right';
 export type Weather = 'sunny' | 'rain' | 'snow';
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 /** 场景：农场（室外）/ 住宅 / 鸡舍 / 牛棚 */
-export type SceneId = 'farm' | 'house' | 'coop' | 'barn';
+export type SceneId = 'farm' | 'house' | 'coop' | 'barn' | 'mine';
 export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy';
 
 export interface CropDef {
@@ -88,7 +88,7 @@ export interface ToolState {
 
 /* ---------------- 资源节点 ---------------- */
 
-export type NodeKind = 'tree' | 'rock' | 'weed';
+export type NodeKind = 'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem';
 
 export interface ResNode {
   key: string;

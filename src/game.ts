@@ -16,7 +16,8 @@ import {
   buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
   TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
   unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS,
-  ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt
+  ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt,
+  MINE_ROOM, MINE_FLOORS, mineOrePlan, getMineFloor, setMineFloor
 } from './world';
 import {
   DIFFICULTY_ORDER, difficultyOf, applyDifficulty, shiftBand
@@ -260,6 +261,83 @@ function makeNodes(): ResNode[] {  const nodes: ResNode[] = [];
 
 function emptyHotbar(): (HotbarRef | null)[] {
   return [null, null, null, null, null, null, null, null];
+}
+
+/* ---------------- 矿洞 ---------------- */
+
+/** 生成某一层的矿脉节点（key 带层级，便于和农场节点区分） */
+function makeMineNodes(floor: number): ResNode[] {
+  const out: ResNode[] = [];
+  const plan = mineOrePlan(floor);
+  const r = MINE_ROOM;
+
+  // 候选格子：房间内部，避开梯子与出生点周围
+  const spots: Array<[number, number]> = [];
+  for (let ty = r.y0 + 1; ty < r.y1; ty++) {
+    for (let tx = r.x0 + 1; tx < r.x1; tx++) {
+      if (Math.abs(tx - r.up.tx) <= 1 && Math.abs(ty - r.up.ty) <= 1) continue;
+      if (tx === r.down.tx && ty === r.down.ty) continue;
+      spots.push([tx, ty]);
+    }
+  }
+  // 洗牌取前若干个
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [spots[i], spots[j]] = [spots[j], spots[i]];
+  }
+
+  let idx = 0;
+  for (const { kind, count } of plan) {
+    const def = NODE_DEFS[kind];
+    for (let i = 0; i < count && idx < spots.length; i++, idx++) {
+      const [tx, ty] = spots[idx];
+      out.push({
+        key: `m${floor}:${kind}:${tx},${ty}`,
+        kind, tx, ty,
+        hp: def.hp, maxHp: def.hp, regrowDay: 0
+      });
+    }
+  }
+  return out;
+}
+
+/** 进矿洞（默认第 1 层） */
+function enterMine(floor = 1): void {
+  setMineFloor(floor);
+  state.scene = 'mine';
+  // 清掉旧的矿洞节点，生成本层
+  state.nodes = state.nodes.filter((n) => !n.key.startsWith('m'));
+  state.nodes.push(...makeMineNodes(floor));
+  buildScene('mine');
+  applySeason(seasonOfDay(state.day));
+  const sp = MINE_ROOM.spawn;
+  state.player.x = sp.tx * TILE + TILE / 2;
+  state.player.y = sp.ty * TILE + TILE / 2;
+  state.player.dir = sp.dir;
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
+  UI.toast(floor === 1 ? '走进矿洞' : `下到第 ${floor} 层`, 'good');
+}
+
+/** 出矿洞回农场 */
+function exitMine(): void {
+  state.scene = 'farm';
+  state.nodes = state.nodes.filter((n) => !n.key.startsWith('m'));
+  setMineFloor(0);
+  buildScene('farm');
+  for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
+  syncBlockers(state);
+  applySeason(seasonOfDay(state.day));
+  const spot = farmExitSpot('mine');
+  state.player.x = spot.tx * TILE + TILE / 2;
+  state.player.y = spot.ty * TILE + TILE / 2;
+  state.player.dir = spot.dir;
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
 }
 
 /** 补齐旧存档缺失的字段（例如新增工具、新统计项） */
@@ -971,8 +1049,29 @@ function useDoor(tx: number, ty: number): void {
     if (tx === FARM_DOORS.house.tx && ty === FARM_DOORS.house.ty) { enterScene('house'); return; }
     if (tx === FARM_DOORS.coop.tx && ty === FARM_DOORS.coop.ty) { enterScene('coop'); return; }
     if (tx === FARM_DOORS.barn.tx && ty === FARM_DOORS.barn.ty) { enterScene('barn'); return; }
+    if (tx === FARM_DOORS.mine.tx && ty === FARM_DOORS.mine.ty) { enterMine(1); return; }
+  } else if (s === 'mine') {
+    exitMine();
   } else {
     exitToFarm();
+  }
+}
+
+/** 梯子：向上回上一层（第 1 层则回农场），向下进下一层 */
+function useLadder(tx: number, ty: number): void {
+  const r = MINE_ROOM;
+  const floor = getMineFloor();
+  const isUp = tx === r.up.tx && ty === r.up.ty;
+
+  if (isUp) {
+    if (floor <= 1) { exitMine(); return; }
+    enterMine(floor - 1);
+    return;
+  }
+  if (floor < MINE_FLOORS) {
+    enterMine(floor + 1);
+  } else {
+    UI.toast('这里已经是最深处了', 'bad');
   }
 }
 
@@ -1031,6 +1130,7 @@ function tryInteract(): void {
   // 门：进出场景（优先于其它交互）
   const tgt = targetAtSafe(tx, ty);
   if (tgt?.kind === 'door') { useDoor(tx, ty); return; }
+  if (tgt?.kind === 'ladder') { useLadder(tx, ty); return; }
   if (tgt?.kind === 'bed') { askSleep(); return; }
   if (tgt?.kind === 'shelf') { openDex(); return; }
 
@@ -1660,11 +1760,18 @@ function openShop(): void {
     const mat = upgradeMaterial(id, next);
     const wood = Bag.countInBag(state.bag, 'mat.wood');
     const stoneHave = Bag.countInBag(state.bag, 'mat.stone');
-    const enough = state.coins >= mat.cost && wood >= mat.wood && stoneHave >= mat.stone;
+    const copperHave = Bag.countInBag(state.bag, 'mat.copper');
+    const ironHave = Bag.countInBag(state.bag, 'mat.iron');
+    const gemHave = Bag.countInBag(state.bag, 'mat.gem');
+    const enough = state.coins >= mat.cost && wood >= mat.wood && stoneHave >= mat.stone
+      && copperHave >= mat.copper && ironHave >= mat.iron && gemHave >= mat.gem;
     const need = [
       mat.cost > 0 ? `${mat.cost}G` : '',
       mat.wood > 0 ? `木${mat.wood}(${wood})` : '',
-      mat.stone > 0 ? `石${mat.stone}(${stoneHave})` : ''
+      mat.stone > 0 ? `石${mat.stone}(${stoneHave})` : '',
+      mat.copper > 0 ? `<span class="ore">铜${mat.copper}(${copperHave})</span>` : '',
+      mat.iron > 0 ? `<span class="ore">铁${mat.iron}(${ironHave})</span>` : '',
+      mat.gem > 0 ? `<span class="ore">宝${mat.gem}(${gemHave})</span>` : ''
     ].filter(Boolean).join(' + ');
     return `<div class="shop-row">
       <div><div class="nm">${def.icon} ${['铜', '银', '金', '秘银'][st.tier - 1]}${def.name} → ${info.name}${def.name}</div>
@@ -1820,10 +1927,16 @@ function upgradeTool(id: ToolId): void {
   if (state.coins < mat.cost) { UI.toast('金币不够', 'bad'); return; }
   if (Bag.countInBag(state.bag, 'mat.wood') < mat.wood) { UI.toast(`木材不够，需要 ${mat.wood}`, 'bad'); return; }
   if (Bag.countInBag(state.bag, 'mat.stone') < mat.stone) { UI.toast(`石材不够，需要 ${mat.stone}`, 'bad'); return; }
+  if (Bag.countInBag(state.bag, 'mat.copper') < mat.copper) { UI.toast(`铜矿不够，需要 ${mat.copper}（去矿洞挖）`, 'bad'); return; }
+  if (Bag.countInBag(state.bag, 'mat.iron') < mat.iron) { UI.toast(`铁矿不够，需要 ${mat.iron}（矿洞 3 层以下）`, 'bad'); return; }
+  if (Bag.countInBag(state.bag, 'mat.gem') < mat.gem) { UI.toast(`宝石不够，需要 ${mat.gem}（矿洞最深处）`, 'bad'); return; }
 
   state.coins -= mat.cost;
   if (mat.wood) Bag.removeFromBag(state.bag, 'mat.wood', mat.wood);
   if (mat.stone) Bag.removeFromBag(state.bag, 'mat.stone', mat.stone);
+  if (mat.copper) Bag.removeFromBag(state.bag, 'mat.copper', mat.copper);
+  if (mat.iron) Bag.removeFromBag(state.bag, 'mat.iron', mat.iron);
+  if (mat.gem) Bag.removeFromBag(state.bag, 'mat.gem', mat.gem);
   st.tier = next;
   // 升级等于换了把新工具，耐久修满到新等级上限
   st.durability = toolMaxDurability(next);

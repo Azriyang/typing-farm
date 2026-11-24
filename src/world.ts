@@ -29,7 +29,13 @@ export const T = {
   /** 石地板（棚舍） */
   FLOOR_STONE: 10,
   /** 室内墙 */
-  WALL_IN: 11
+  WALL_IN: 11,
+  /** 矿洞岩壁 */
+  MINE_WALL: 12,
+  /** 矿洞地面 */
+  MINE_FLOOR: 13,
+  /** 梯子（上下楼） */
+  LADDER: 14
 } as const;
 
 export type TileId = (typeof T)[keyof typeof T];
@@ -235,14 +241,47 @@ export const ROOMS: Record<'house' | 'coop' | 'barn', Room> = {
 };
 
 /** 农场里三个建筑的门位置（用于从室内走回农场时定位置） */
-export const FARM_DOORS: Record<'house' | 'coop' | 'barn', { tx: number; ty: number }> = {
+export const FARM_DOORS: Record<'house' | 'coop' | 'barn' | 'mine', { tx: number; ty: number }> = {
   house: { tx: 5, ty: 6 },
   coop: { tx: 4, ty: 15 },
-  barn: { tx: 12, ty: 15 }
+  barn: { tx: 12, ty: 15 },
+  mine: { tx: 13, ty: 3 }
 };
 
+/* ---------------- 矿洞 ---------------- */
+
+/** 矿洞总层数 */
+export const MINE_FLOORS = 5;
+
+/** 当前所在矿洞层（1 起；不在矿洞里时为 0） */
+let mineFloor = 0;
+export function getMineFloor(): number {
+  return mineFloor;
+}
+export function setMineFloor(n: number): void {
+  mineFloor = n;
+}
+
+/** 矿洞房间范围（每层相同布局） */
+export const MINE_ROOM = {
+  x0: 17, y0: 5, x1: 32, y1: 17,
+  /** 上行梯子（回上一层 / 回农场） */
+  up: { tx: 19, ty: 7 },
+  /** 下行梯子（下一层；最深层没有） */
+  down: { tx: 30, ty: 15 },
+  /** 进入时的落点 */
+  spawn: { tx: 19, ty: 8, dir: 'down' as Dir }
+};
+
+/** 某层的矿脉配置：种类 + 数量 */
+export function mineOrePlan(floor: number): Array<{ kind: 'oreCopper' | 'oreIron' | 'oreGem'; count: number }> {
+  if (floor <= 2) return [{ kind: 'oreCopper', count: 4 }];
+  if (floor <= 4) return [{ kind: 'oreCopper', count: 2 }, { kind: 'oreIron', count: 3 }];
+  return [{ kind: 'oreIron', count: 3 }, { kind: 'oreGem', count: 2 }];
+}
+
 /** 从室内出来时站在门外哪里 */
-export function farmExitSpot(id: 'house' | 'coop' | 'barn'): { tx: number; ty: number; dir: Dir } {
+export function farmExitSpot(id: 'house' | 'coop' | 'barn' | 'mine'): { tx: number; ty: number; dir: Dir } {
   const d = FARM_DOORS[id];
   return { tx: d.tx, ty: d.ty + 1, dir: 'down' };
 }
@@ -263,12 +302,22 @@ export function buildScene(id: SceneId): void {
   dynamicBlocked.clear();
   if (id === 'farm') { buildFarmTerrain(); return; }
 
+  if (id === 'mine') { buildMineTerrain(); return; }
+
   // 室内：整张图先填墙，再挖出房间地板
   terrain.fill(T.WALL_IN);
   const r = ROOMS[id as 'house' | 'coop' | 'barn'];
   setRect(r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, r.floor);
   // 门
   set(r.door.tx, r.door.ty, T.DOOR);
+}
+
+function buildMineTerrain(): void {
+  const r = MINE_ROOM;
+  terrain.fill(T.MINE_WALL);
+  setRect(r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, T.MINE_FLOOR);
+  set(r.up.tx, r.up.ty, T.LADDER);
+  if (mineFloor < MINE_FLOORS) set(r.down.tx, r.down.ty, T.LADDER);
 }
 
 function buildFarmTerrain(): void {
@@ -301,9 +350,10 @@ function buildFarmTerrain(): void {
   setRect(3, 5, 6, 2, T.WALL);
   set(5, 6, T.DOOR);
 
-  // 鸡舍 / 牛棚的门（让玩家能从外面走进去）
+  // 鸡舍 / 牛棚 / 矿洞的门（让玩家能从外面走进去）
   set(FARM_DOORS.coop.tx, FARM_DOORS.coop.ty, T.DOOR);
   set(FARM_DOORS.barn.tx, FARM_DOORS.barn.ty, T.DOOR);
+  set(FARM_DOORS.mine.tx, FARM_DOORS.mine.ty, T.DOOR);
 
   // 小路（农场）+ 向东延伸的进镇道路
   setRect(4, 7, 15, 1, T.PATH);
@@ -338,7 +388,9 @@ const BLOCKED: Record<number, boolean> = {
   [T.ROOF]: true,
   [T.DOOR]: true,
   [T.TREE]: true,
-  [T.WALL_IN]: true
+  [T.WALL_IN]: true,
+  [T.MINE_WALL]: true,
+  [T.LADDER]: true
 };
 
 export function setNodeBlock(tx: number, ty: number, blocked: boolean): void {
@@ -450,7 +502,7 @@ export function unlockArea(k: number): void {
 /* ---------------- 交互目标 ---------------- */
 
 export interface Target {
-  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf';
+  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf' | 'ladder';
   tx: number;
   ty: number;
   plotIndex: number;
@@ -475,6 +527,7 @@ export function facingTile(p: Player): { tx: number; ty: number } {
 export function targetAt(tx: number, ty: number): Target | null {
   const t = tileAt(tx, ty);
   if (t === T.DOOR) return { kind: 'door', tx, ty, plotIndex: -1 };
+  if (t === T.LADDER) return { kind: 'ladder', tx, ty, plotIndex: -1 };
   // 室内家具
   const f = furnitureAt(scene, tx, ty);
   if (f) {

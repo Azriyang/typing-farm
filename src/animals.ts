@@ -228,8 +228,8 @@ export function animalNear(state: GameState, px: number, py: number, dir: Dir): 
 export function animalNearInScene(state: GameState, px: number, py: number, dir: Dir): Animal | null {
   const s = getScene();
   if (s === 'farm') return animalNear(state, px, py, dir);
-  // 住宅里没有动物
-  if (s === 'house') return null;
+  // 住宅和矿洞里没有动物
+  if (s === 'house' || s === 'mine') return null;
 
   const [dvx, dvy] = DIR_VEC[dir];
   const fx = px + dvx * 34;

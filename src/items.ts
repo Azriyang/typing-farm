@@ -90,6 +90,12 @@ reg({ id: 'mat.wood', kind: 'material', name: '木材', icon: '🪵', max: 99, d
 reg({ id: 'mat.stone', kind: 'material', name: '石材', icon: '🪨', max: 99, desc: '挖岩石获得，升级工具的材料' });
 reg({ id: 'mat.fiber', kind: 'material', name: '纤维', icon: '🌿', max: 99, desc: '割草获得' });
 
+/* ---------------- 矿石（矿洞专属） ---------------- */
+
+reg({ id: 'mat.copper', kind: 'material', name: '铜矿', icon: '🟤', max: 99, desc: '矿洞 1~2 层产出 · 升级工具', price: 80 });
+reg({ id: 'mat.iron', kind: 'material', name: '铁矿', icon: '⬛', max: 99, desc: '矿洞 3~4 层产出 · 升级工具', price: 200 });
+reg({ id: 'mat.gem', kind: 'material', name: '宝石', icon: '💎', max: 99, desc: '矿洞最深处产出 · 顶级材料', price: 600 });
+
 /* ---------------- 动物产物 ---------------- */
 
 reg({ id: 'prod.egg', kind: 'product', name: '鸡蛋', icon: '🥚', max: 99, desc: '鸡的产出 · 心情决定品质', price: 70 });

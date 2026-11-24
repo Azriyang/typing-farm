@@ -11,7 +11,7 @@ import type { GameState, ResNode, ToolId } from './types';
 export type ActionKind =
   | 'till' | 'plant' | 'water' | 'harvest'
   | 'chop' | 'mine' | 'cut' | 'fish'
-  | 'door' | 'bin' | 'order' | 'locked' | 'sleep' | 'dex';
+  | 'door' | 'bin' | 'order' | 'locked' | 'sleep' | 'dex' | 'ladder';
 
 export interface ActionInfo {
   kind: ActionKind;
@@ -69,6 +69,9 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   if (node) {
     if (node.kind === 'tree') return base('chop', '砍树', 'axe', { nodeKey: node.key });
     if (node.kind === 'rock') return base('mine', '挖石', 'pick', { nodeKey: node.key });
+    if (node.kind === 'oreCopper' || node.kind === 'oreIron' || node.kind === 'oreGem') {
+      return base('mine', '挖矿', 'pick', { nodeKey: node.key });
+    }
     return base('cut', '割草', 'sickle', { nodeKey: node.key });
   }
 
@@ -81,6 +84,7 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   const t = targetAt(tx, ty);
   if (!t) return null;
   if (t.kind === 'door') return base('door', isIndoor() ? '出门' : '进屋', null);
+  if (t.kind === 'ladder') return base('ladder', '上下楼', null);
   if (t.kind === 'bed') return base('sleep', '睡觉', null);
   if (t.kind === 'shelf') return base('dex', '图鉴', null);
   if (t.kind === 'object' && t.object) {

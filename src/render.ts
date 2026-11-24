@@ -6,7 +6,8 @@ import { CROPS } from './config';
 import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
   plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS,
-  areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos
+  areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos,
+  FARM_DOORS
 } from './world';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
@@ -294,16 +295,46 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
       break;
     }
     case T.DOOR: {
-      if (getScene() === 'farm') {
-        // 农场上的门：house 的门会被 drawHouse 覆盖，这里给 coop/barn 画门
+      if (getScene() === 'mine') {
+        // 矿洞出口：向上的洞口
+        c.fillStyle = '#2b2220';
+        c.fillRect(x, y, TILE, TILE);
+        c.fillStyle = '#4a3a34';
+        c.fillRect(x + 6, y + 6, TILE - 12, TILE - 12);
+        c.fillStyle = '#141010';
+        c.beginPath();
+        c.ellipse(x + TILE / 2, y + TILE / 2, 12, 14, 0, 0, Math.PI * 2);
+        c.fill();
+      } else if (getScene() === 'farm') {
+        // 农场上的门：house 的门会被 drawHouse 覆盖，这里给 coop/barn/矿洞画门
         c.fillStyle = pal.grass;
         c.fillRect(x, y, TILE, TILE);
-        c.fillStyle = '#5a3c22';
-        c.fillRect(x + 6, y + 8, TILE - 12, TILE - 8);
-        c.fillStyle = '#7a5334';
-        c.fillRect(x + 9, y + 11, TILE - 18, TILE - 11);
-        c.fillStyle = '#e8c86a';
-        c.fillRect(x + TILE - 16, y + 26, 4, 4);
+        // 矿洞入口画成石拱
+        if (tx === FARM_DOORS.mine.tx && ty === FARM_DOORS.mine.ty) {
+          c.fillStyle = '#6b6058';
+          c.beginPath();
+          c.moveTo(x + 2, y + TILE);
+          c.lineTo(x + 2, y + 20);
+          c.quadraticCurveTo(x + TILE / 2, y - 4, x + TILE - 2, y + 20);
+          c.lineTo(x + TILE - 2, y + TILE);
+          c.closePath();
+          c.fill();
+          c.fillStyle = '#100c0c';
+          c.beginPath();
+          c.moveTo(x + 9, y + TILE);
+          c.lineTo(x + 9, y + 24);
+          c.quadraticCurveTo(x + TILE / 2, y + 6, x + TILE - 9, y + 24);
+          c.lineTo(x + TILE - 9, y + TILE);
+          c.closePath();
+          c.fill();
+        } else {
+          c.fillStyle = '#5a3c22';
+          c.fillRect(x + 6, y + 8, TILE - 12, TILE - 8);
+          c.fillStyle = '#7a5334';
+          c.fillRect(x + 9, y + 11, TILE - 18, TILE - 11);
+          c.fillStyle = '#e8c86a';
+          c.fillRect(x + TILE - 16, y + 26, 4, 4);
+        }
       } else {
         // 室内门：木门 + 门框
         c.fillStyle = '#3d2f24';
@@ -314,6 +345,46 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
         c.fillRect(x + 7, y + 5, TILE - 14, TILE - 8);
         c.fillStyle = '#e8c86a';
         c.fillRect(x + TILE - 16, y + TILE / 2, 4, 4);
+      }
+      break;
+    }
+    /* ---------------- 矿洞 ---------------- */
+    case T.MINE_WALL: {
+      c.fillStyle = '#2f2724';
+      c.fillRect(x, y, TILE, TILE);
+      c.fillStyle = '#3d332e';
+      c.fillRect(x, y, TILE, TILE - 3);
+      // 岩块纹理
+      const rr = hash(tx * 7, ty * 11);
+      c.fillStyle = '#4a3f39';
+      c.fillRect(x + 4 + rr * 20, y + 6 + rr * 18, 12, 8);
+      c.fillStyle = 'rgba(0,0,0,.22)';
+      c.fillRect(x, y + TILE - 5, TILE, 5);
+      break;
+    }
+    case T.MINE_FLOOR: {
+      c.fillStyle = '#4a4038';
+      c.fillRect(x, y, TILE, TILE);
+      c.fillStyle = '#544940';
+      c.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      // 碎石
+      for (let i = 0; i < 5; i++) {
+        const rr = hash(tx * 13 + i, ty * 17 + i * 3);
+        c.fillStyle = i % 2 ? '#5e5249' : '#3f362f';
+        c.fillRect(Math.floor(x + 5 + rr * (TILE - 12)), Math.floor(y + 6 + hash(tx + i, ty + i) * (TILE - 14)), 4, 3);
+      }
+      break;
+    }
+    case T.LADDER: {
+      c.fillStyle = '#4a4038';
+      c.fillRect(x, y, TILE, TILE);
+      // 梯子：两根竖梁 + 横档
+      c.fillStyle = '#8a6a3e';
+      c.fillRect(x + 12, y + 2, 5, TILE - 4);
+      c.fillRect(x + TILE - 17, y + 2, 5, TILE - 4);
+      c.fillStyle = '#a8844e';
+      for (let i = 0; i < 5; i++) {
+        c.fillRect(x + 12, y + 6 + i * 9, TILE - 24, 4);
       }
       break;
     }
@@ -1701,6 +1772,74 @@ function drawNode(c: Ctx, node: ResNode, nowMs: number) {
       c.beginPath();
       c.moveTo(cx + 6, baseY - 14);
       c.lineTo(cx - 1, baseY - 3);
+      c.stroke();
+    }
+  } else if (node.kind === 'oreCopper' || node.kind === 'oreIron' || node.kind === 'oreGem') {
+    const oreStyle = {
+      oreCopper: { rock: '#6b5a48', vein: '#c07a3e', glow: '#e8a05c' },
+      oreIron: { rock: '#4f4a46', vein: '#8a9aa8', glow: '#b8c8d8' },
+      oreGem: { rock: '#463f52', vein: '#9a6ad0', glow: '#d0a0ff' }
+    }[node.kind];
+    const dmg = node.hp <= 0 ? 1 : 1 - node.hp / node.maxHp;
+
+    if (node.hp <= 0) {
+      c.fillStyle = oreStyle.rock;
+      c.fillRect(cx - 9, baseY - 5, 7, 5);
+      c.fillRect(cx + 3, baseY - 3, 6, 3);
+      return;
+    }
+
+    // 岩体
+    c.fillStyle = oreStyle.rock;
+    c.beginPath();
+    c.moveTo(cx - 16, baseY);
+    c.lineTo(cx - 13, baseY - 18);
+    c.lineTo(cx - 4, baseY - 24);
+    c.lineTo(cx + 8, baseY - 20);
+    c.lineTo(cx + 16, baseY - 5);
+    c.lineTo(cx + 12, baseY);
+    c.closePath();
+    c.fill();
+    // 顶部受光
+    c.fillStyle = shift(oreStyle.rock, 24);
+    c.beginPath();
+    c.moveTo(cx - 13, baseY - 18);
+    c.lineTo(cx - 4, baseY - 24);
+    c.lineTo(cx + 3, baseY - 16);
+    c.lineTo(cx - 6, baseY - 11);
+    c.closePath();
+    c.fill();
+
+    // 矿脉：发光的结晶
+    const pulse = 0.7 + Math.sin(nowMs / 420 + node.tx) * 0.3;
+    c.fillStyle = oreStyle.vein;
+    for (const [dx, dy, r] of [[-6, -14, 3.4], [3, -9, 2.8], [-1, -17, 2.2], [7, -16, 2.4]]) {
+      c.beginPath();
+      c.arc(cx + dx, baseY + dy, r, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 0.5 * pulse;
+    c.fillStyle = oreStyle.glow;
+    for (const [dx, dy, r] of [[-6, -14, 2.0], [3, -9, 1.6]]) {
+      c.beginPath();
+      c.arc(cx + dx, baseY + dy, r, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+
+    // 敲击裂纹
+    if (dmg > 0.3) {
+      c.strokeStyle = '#2a2420';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(cx - 5, baseY - 18);
+      c.lineTo(cx + 2, baseY - 8);
+      c.stroke();
+    }
+    if (dmg > 0.6) {
+      c.beginPath();
+      c.moveTo(cx + 7, baseY - 15);
+      c.lineTo(cx - 2, baseY - 3);
       c.stroke();
     }
   } else {

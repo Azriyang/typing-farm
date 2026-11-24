@@ -2,7 +2,7 @@
    tools.ts — 工具定义、等级、升级配方、资源节点
    ============================================================ */
 
-import type { ToolId } from './types';
+import type { ToolId, NodeKind } from './types';
 import type { WordCategory } from './words';
 
 export type ToolTarget = 'soil' | 'crop' | 'tree' | 'rock' | 'weed' | 'water';
@@ -128,13 +128,27 @@ export function durabilityRatio(durability: number, tier: number): number {
 }
 
 /** 斧头/镐这类"敲石头"的升级偏石材 */
-export function upgradeMaterial(tool: ToolId, tier: number): { wood: number; stone: number; cost: number } {
+/**
+ * 升级配方。
+ * 银→金、金→秘银 需要矿洞产出（铜矿/铁矿/宝石），
+ * 这样矿洞才有明确用途——否则它只是又一个能挖石头的地方。
+ */
+export interface UpgradeMat { wood: number; stone: number; copper: number; iron: number; gem: number; cost: number }
+
+export function upgradeMaterial(tool: ToolId, tier: number): UpgradeMat {
   const t = tierInfo(tier);
+  const base: UpgradeMat = { wood: 0, stone: 0, copper: 0, iron: 0, gem: 0, cost: t.cost };
+
+  // 斧/镐不吃木材，只用石材
   if (tool === 'axe' || tool === 'pick') {
-    if (tier === 2) return { wood: 0, stone: 10, cost: t.cost };
-    if (tier === 3) return { wood: 0, stone: 24, cost: t.cost };
+    if (tier === 2) return { ...base, stone: 10 };
+    if (tier === 3) return { ...base, stone: 18, copper: 4 };
+    return { ...base, stone: 26, copper: 6, iron: 4 };
   }
-  return { wood: t.wood, stone: t.stone, cost: t.cost };
+
+  if (tier === 2) return { ...base, wood: t.wood, stone: t.stone };
+  if (tier === 3) return { ...base, wood: t.wood, stone: t.stone, copper: 4 };
+  return { ...base, wood: t.wood, stone: t.stone, copper: 6, iron: 4, gem: 2 };
 }
 
 /** 秘银专属：一次处理的最大目标数 */
@@ -165,7 +179,7 @@ export function repeatCount(tool: ToolId): number {
 /* ---------------- 资源节点 ---------------- */
 
 export interface NodeDef {
-  kind: 'tree' | 'rock' | 'weed';
+  kind: NodeKind;
   name: string;
   hp: number;
   drop: string;
@@ -175,8 +189,12 @@ export interface NodeDef {
   tool: ToolId;
 }
 
-export const NODE_DEFS: Record<'tree' | 'rock' | 'weed', NodeDef> = {
+export const NODE_DEFS: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> = {
   tree: { kind: 'tree', name: '树', hp: 3, drop: 'mat.wood', dropMin: 2, dropMax: 4, regrow: 3, tool: 'axe' },
   rock: { kind: 'rock', name: '岩石', hp: 2, drop: 'mat.stone', dropMin: 2, dropMax: 3, regrow: 5, tool: 'pick' },
-  weed: { kind: 'weed', name: '杂草', hp: 1, drop: 'mat.fiber', dropMin: 1, dropMax: 2, regrow: 0, tool: 'sickle' }
+  weed: { kind: 'weed', name: '杂草', hp: 1, drop: 'mat.fiber', dropMin: 1, dropMax: 2, regrow: 0, tool: 'sickle' },
+  /* 矿洞：不重生，重新进洞才刷新 */
+  oreCopper: { kind: 'oreCopper', name: '铜矿脉', hp: 2, drop: 'mat.copper', dropMin: 1, dropMax: 3, regrow: 0, tool: 'pick' },
+  oreIron: { kind: 'oreIron', name: '铁矿脉', hp: 3, drop: 'mat.iron', dropMin: 1, dropMax: 2, regrow: 0, tool: 'pick' },
+  oreGem: { kind: 'oreGem', name: '宝石矿脉', hp: 4, drop: 'mat.gem', dropMin: 1, dropMax: 2, regrow: 0, tool: 'pick' }
 };

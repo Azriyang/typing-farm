@@ -158,11 +158,20 @@ export function festivalEffects(day: number): FestivalEffects {
 /* ---------------- 色板 ---------------- */
 
 export interface Palette {
+  /** 草地 base */
   grass: string;
+  /** 草地高光 */
+  grassHi: string;
+  /** 草地阴影 */
   grassDark: string;
+  /** 草地描边（同时作为"深色草"） */
+  grassLine: string;
   /** 树冠 [深, 中, 浅] */
   foliage: [string, string, string];
+  /** 树冠描边 */
+  foliageLine: string;
   trunk: string;
+  trunkLine: string;
   flowerStem: string;
   /** 是否开花（冬天不开） */
   bloom: boolean;
@@ -173,27 +182,31 @@ export interface Palette {
 
 export const PALETTES: Record<Season, Palette> = {
   spring: {
-    grass: '#84c169', grassDark: '#74ae59',
-    foliage: ['#4f8a42', '#63a84f', '#78bb5c'],
-    trunk: '#6b4a2e', flowerStem: '#5f9e48', bloom: true,
+    grass: '#8ccb68', grassHi: '#a8dd85', grassDark: '#6ba84d', grassLine: '#4a7a33',
+    foliage: ['#5a9a48', '#6fb457', '#88c96b'], foliageLine: '#3c6b2f',
+    trunk: '#8a6340', trunkLine: '#5a4028',
+    flowerStem: '#5f9e48', bloom: true,
     tint: '255,240,200', tintAlpha: 0.03
   },
   summer: {
-    grass: '#5da84e', grassDark: '#4e9240',
-    foliage: ['#3f7a35', '#529243', '#66a84f'],
-    trunk: '#6b4a2e', flowerStem: '#4e8a3c', bloom: true,
+    grass: '#6fb454', grassHi: '#8bc972', grassDark: '#54923e', grassLine: '#3a6b2a',
+    foliage: ['#3f7a35', '#529243', '#66a84f'], foliageLine: '#2a5522',
+    trunk: '#8a6340', trunkLine: '#5a4028',
+    flowerStem: '#4e8a3c', bloom: true,
     tint: '255,220,120', tintAlpha: 0.05
   },
   autumn: {
-    grass: '#c2a24e', grassDark: '#a98c3f',
-    foliage: ['#c9743f', '#d99a3c', '#e0b04a'],
-    trunk: '#6b4a2e', flowerStem: '#a98c3f', bloom: true,
+    grass: '#c0a355', grassHi: '#d6bb70', grassDark: '#9e8440', grassLine: '#6f5a28',
+    foliage: ['#c9743f', '#d99a3c', '#e0b04a'], foliageLine: '#8a4a24',
+    trunk: '#8a6340', trunkLine: '#5a4028',
+    flowerStem: '#a98c3f', bloom: true,
     tint: '230,150,60', tintAlpha: 0.07
   },
   winter: {
-    grass: '#dfe6ea', grassDark: '#c8d2d8',
-    foliage: ['#9fb2ba', '#b8c6cc', '#d0dade'],
-    trunk: '#5a4a3e', flowerStem: '#b8c6cc', bloom: false,
+    grass: '#dbe4e9', grassHi: '#eef4f7', grassDark: '#bcc9d0', grassLine: '#8a9aa3',
+    foliage: ['#9fb2ba', '#b8c6cc', '#d0dade'], foliageLine: '#6d7e86',
+    trunk: '#7a6350', trunkLine: '#4e3d2e',
+    flowerStem: '#b8c6cc', bloom: false,
     tint: '160,190,230', tintAlpha: 0.08
   }
 };

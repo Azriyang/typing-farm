@@ -14,6 +14,7 @@ import { villagerNear, VILLAGER_DEFS } from './villagers';
 import { TOOLS } from './tools';
 import { PALETTES } from './seasons';
 import type { Palette } from './seasons';
+import { MAT, CHAR, shift, softShadow } from './palette';
 import type { GameState, Plot, Dir, CropId, ResNode, Animal, Season, Villager } from './types';
 
 type Ctx = CanvasRenderingContext2D;
@@ -71,15 +72,6 @@ function hash(x: number, y: number): number {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-function shade(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  r = Math.max(0, Math.min(255, Math.round(r + amt)));
-  g = Math.max(0, Math.min(255, Math.round(g + amt)));
-  b = Math.max(0, Math.min(255, Math.round(b + amt)));
-  return `rgb(${r},${g},${b})`;
-}
-
 /* ---------------- 初始化 ---------------- */
 
 export function initRenderer(cv: HTMLCanvasElement, dprValue: number) {
@@ -135,63 +127,105 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
     case T.FLOWER: {
       c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
-      // 草簇
-      c.fillStyle = pal.grassDark;
-      for (let i = 0; i < 5; i++) {
+
+      // 草叶：暗底 + 亮顶，营造细密纹理
+      for (let i = 0; i < 9; i++) {
         const rr = hash(tx * 7 + i, ty * 13 + i * 3);
-        const px = x + 6 + rr * (TILE - 14);
-        const py = y + 8 + hash(tx + i * 5, ty + i) * (TILE - 18);
-        c.fillRect(Math.floor(px), Math.floor(py), 3, 2);
+        const px = Math.floor(x + 3 + rr * (TILE - 8));
+        const py = Math.floor(y + 5 + hash(tx + i * 5, ty + i) * (TILE - 14));
+        const hh = 3 + Math.floor(hash(tx + i, ty * 2 + i) * 3);
+        c.fillStyle = pal.grassDark;
+        c.fillRect(px, py, 2, hh);
+        c.fillStyle = pal.grassHi;
+        c.fillRect(px, py, 2, 2);
       }
+
+      // 零星深色小坑，制造起伏
+      for (let i = 0; i < 2; i++) {
+        const rr = hash(tx * 17 + i * 3, ty * 29 + i);
+        c.fillStyle = pal.grassDark;
+        c.fillRect(
+          Math.floor(x + 8 + rr * (TILE - 18)),
+          Math.floor(y + 10 + hash(tx * 3, ty + i) * (TILE - 20)),
+          3, 2
+        );
+      }
+
       if (t === T.FLOWER && pal.bloom) {
-        const cols = ['#f2d45c', '#f08fb0', '#ffffff', '#e07f5a'];
+        const cols = ['#f2d45c', '#f08fb0', '#fffdf7', '#e88f6a'];
         for (let i = 0; i < 3; i++) {
           const rr = hash(tx * 31 + i, ty * 17 + i);
-          const px = x + 8 + rr * (TILE - 18);
-          const py = y + 10 + hash(tx + i * 9, ty * 3 + i) * (TILE - 22);
-          c.fillStyle = cols[Math.floor(rr * cols.length)];
-          c.fillRect(Math.floor(px), Math.floor(py), 3, 3);
+          const px = Math.floor(x + 9 + rr * (TILE - 20));
+          const py = Math.floor(y + 11 + hash(tx + i * 9, ty * 3 + i) * (TILE - 24));
+          // 花茎
           c.fillStyle = pal.flowerStem;
-          c.fillRect(Math.floor(px + 1), Math.floor(py + 4), 1, 3);
+          c.fillRect(px + 1, py + 3, 1, 4);
+          // 花瓣（环状四点 + 花心）
+          c.fillStyle = cols[Math.floor(rr * cols.length)];
+          c.fillRect(px, py, 3, 3);
+          c.fillRect(px - 1, py + 1, 1, 1);
+          c.fillRect(px + 3, py + 1, 1, 1);
+          c.fillRect(px + 1, py - 1, 1, 1);
+          c.fillStyle = '#fff8d8';
+          c.fillRect(px + 1, py + 1, 1, 1);
         }
       }
       break;
     }
     case T.PATH: {
-      c.fillStyle = '#dcc79f';
+      c.fillStyle = MAT.path.base;
       c.fillRect(x, y, TILE, TILE);
-      c.fillStyle = '#cdb389';
-      for (let i = 0; i < 6; i++) {
+      // 碎石颗粒（亮/暗交错）
+      for (let i = 0; i < 10; i++) {
         const rr = hash(tx * 11 + i, ty * 23 + i * 5);
-        c.fillRect(
-          Math.floor(x + 4 + rr * (TILE - 12)),
-          Math.floor(y + 4 + hash(tx + i, ty * 7 + i) * (TILE - 12)),
-          4, 3
-        );
+        const px = Math.floor(x + 3 + rr * (TILE - 9));
+        const py = Math.floor(y + 3 + hash(tx + i, ty * 7 + i) * (TILE - 9));
+        c.fillStyle = i % 2 === 0 ? MAT.path.mid : MAT.path.hi;
+        c.fillRect(px, py, 3, 2);
       }
+      // 接缝的暗线，让路面有砖块感
+      c.fillStyle = MAT.path.line;
+      c.globalAlpha = 0.18;
+      c.fillRect(x, y + TILE - 1, TILE, 1);
+      c.globalAlpha = 1;
       break;
     }
     case T.WATER: {
-      c.fillStyle = '#5aa9d6';
+      c.fillStyle = MAT.water.base;
       c.fillRect(x, y, TILE, TILE);
-      c.fillStyle = '#79c3e6';
-      c.fillRect(x + 4 + r * 10, y + 10 + r * 20, 18, 3);
-      c.fillRect(x + 22, y + 30 + r * 8, 14, 3);
-      // 岸边
-      c.fillStyle = 'rgba(255,255,255,.14)';
+      // 深水底纹
+      c.fillStyle = MAT.water.mid;
+      c.globalAlpha = 0.35;
+      c.fillRect(x + 4 + r * 10, y + 26 + r * 10, 20, 4);
+      c.globalAlpha = 1;
+      // 波纹高光
+      c.fillStyle = MAT.water.hi;
+      c.fillRect(x + 5 + r * 12, y + 11 + r * 18, 16, 2);
+      c.fillRect(x + 24, y + 31 + r * 6, 12, 2);
+      // 岸沿
+      c.fillStyle = 'rgba(255,255,255,.22)';
       c.fillRect(x, y, TILE, 2);
       break;
     }
     case T.SOIL: {
-      c.fillStyle = '#a9855a';
+      c.fillStyle = MAT.soil.base;
       c.fillRect(x, y, TILE, TILE);
-      c.fillStyle = '#96754b';
-      for (let i = 0; i < 7; i++) {
+      // 垄沟：三道横向暗槽，上下各带一条高光，形成"犁过"的立体感
+      for (let i = 0; i < 3; i++) {
+        const gy = Math.floor(y + 9 + i * 13);
+        c.fillStyle = MAT.soil.dark;
+        c.fillRect(x + 4, gy, TILE - 8, 3);
+        c.fillStyle = MAT.soil.hi;
+        c.fillRect(x + 4, gy - 1, TILE - 8, 1);
+      }
+      // 土粒
+      for (let i = 0; i < 6; i++) {
         const rr = hash(tx * 3 + i, ty * 19 + i);
+        c.fillStyle = i % 2 ? MAT.soil.mid : MAT.soil.hi;
         c.fillRect(
-          Math.floor(x + 3 + rr * (TILE - 10)),
-          Math.floor(y + 3 + hash(tx + i * 2, ty + i) * (TILE - 10)),
-          5, 3
+          Math.floor(x + 4 + rr * (TILE - 10)),
+          Math.floor(y + 4 + hash(tx + i * 2, ty + i) * (TILE - 10)),
+          3, 2
         );
       }
       break;
@@ -218,94 +252,199 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
 
 function drawTree(c: Ctx, cx: number, baseY: number, scale: number) {
   const h = 34 * scale;
+  const trunkTop = baseY - 16;
+
+  // 树干（描边 + 木色 + 左侧高光）
+  c.fillStyle = pal.trunkLine;
+  c.fillRect(cx - 4, trunkTop, 8, 16);
   c.fillStyle = pal.trunk;
-  c.fillRect(cx - 3, baseY - 16, 6, 16);
+  c.fillRect(cx - 3, trunkTop, 6, 16);
+  c.fillStyle = shift(pal.trunk, 22);
+  c.fillRect(cx - 2, trunkTop + 1, 2, 13);
+
+  // 树冠：先描边层，再本体，最后高光层
+  const R = 20 * scale, Ry = 16 * scale;
+  const ccy = baseY - 16 - h * 0.35;
+  c.fillStyle = pal.foliageLine;
+  c.beginPath();
+  c.ellipse(cx, ccy, R + 2, Ry + 2, 0, 0, Math.PI * 2);
+  c.fill();
+
   c.fillStyle = pal.foliage[0];
   c.beginPath();
-  c.ellipse(cx, baseY - 16 - h * 0.35, 20 * scale, 16 * scale, 0, 0, Math.PI * 2);
+  c.ellipse(cx, ccy, R, Ry, 0, 0, Math.PI * 2);
   c.fill();
+
+  // 中层（偏左上，受光）
   c.fillStyle = pal.foliage[1];
   c.beginPath();
-  c.ellipse(cx - 6, baseY - 16 - h * 0.5, 15 * scale, 12 * scale, 0, 0, Math.PI * 2);
+  c.ellipse(cx - 6 * scale, ccy - 6 * scale, 15 * scale, 12 * scale, 0, 0, Math.PI * 2);
   c.fill();
+
+  // 亮层（偏右下，反光）
   c.fillStyle = pal.foliage[2];
   c.beginPath();
-  c.ellipse(cx + 7, baseY - 16 - h * 0.3, 13 * scale, 11 * scale, 0, 0, Math.PI * 2);
+  c.ellipse(cx + 7 * scale, ccy + 2 * scale, 13 * scale, 11 * scale, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // 左上高光斑
+  c.fillStyle = shift(pal.foliage[2], 16);
+  c.beginPath();
+  c.ellipse(cx - 8 * scale, ccy - 8 * scale, 7 * scale, 5 * scale, -0.5, 0, Math.PI * 2);
   c.fill();
 }
 
 function drawHouse(c: Ctx) {
   const x0 = 3 * TILE, y0 = 2 * TILE;
   const w = 6 * TILE, h = 5 * TILE;
+  const wallTop = y0 + 2.2 * TILE;
 
-  // 影子
-  c.fillStyle = 'rgba(60,40,20,.18)';
-  c.beginPath();
-  c.ellipse(x0 + w / 2, y0 + h - 4, w * 0.52, 16, 0, 0, Math.PI * 2);
-  c.fill();
+  softShadow(c, x0 + w / 2, y0 + h - 2, w * 0.5, 13, 0.26);
 
-  // 墙体
-  c.fillStyle = '#efdcba';
-  c.fillRect(x0 + 6, y0 + 2.2 * TILE, w - 12, h - 2.2 * TILE);
-  c.fillStyle = '#dcc39a';
+  // ---- 墙体 ----
+  c.fillStyle = '#d8c4a0';
+  c.fillRect(x0 + 5, wallTop - 1, w - 10, h - 2.2 * TILE + 1);
+  c.fillStyle = '#f2e2c4';
+  c.fillRect(x0 + 6, wallTop, w - 12, h - 2.2 * TILE);
+  // 木纹横板
+  c.fillStyle = '#e3cfab';
   for (let i = 0; i < 5; i++) {
-    c.fillRect(x0 + 6, y0 + 2.2 * TILE + i * 22 + 18, w - 12, 3);
+    c.fillRect(x0 + 6, wallTop + i * 20 + 16, w - 12, 2);
+    c.fillStyle = i % 2 ? '#e3cfab' : '#eaddc2';
   }
-  // 木构架
-  c.fillStyle = '#8e6a44';
-  c.fillRect(x0 + 6, y0 + 2.2 * TILE, 5, h - 2.2 * TILE);
-  c.fillRect(x0 + w - 11, y0 + 2.2 * TILE, 5, h - 2.2 * TILE);
+  // 顶部受光边
+  c.fillStyle = '#fdf2da';
+  c.fillRect(x0 + 6, wallTop, w - 12, 2);
 
-  // 屋顶
-  c.fillStyle = '#c9563f';
+  // 木构架（描边色）
+  c.fillStyle = '#7a5334';
+  c.fillRect(x0 + 5, wallTop - 1, 6, h - 2.2 * TILE + 1);
+  c.fillRect(x0 + w - 11, wallTop - 1, 6, h - 2.2 * TILE + 1);
+  c.fillStyle = '#9b7350';
+  c.fillRect(x0 + 6, wallTop, 2, h - 2.2 * TILE);
+  c.fillRect(x0 + w - 10, wallTop, 2, h - 2.2 * TILE);
+
+  // ---- 屋顶（瓦片） ----
+  const rTop = y0 - 6;
+  const rBot = y0 + 2.4 * TILE;
+  const halfTop = 52;
+  c.fillStyle = '#8f3a29';
   c.beginPath();
-  c.moveTo(x0 - 10, y0 + 2.4 * TILE);
-  c.lineTo(x0 + 52, y0 - 6);
-  c.lineTo(x0 + w - 52, y0 - 6);
-  c.lineTo(x0 + w + 10, y0 + 2.4 * TILE);
+  c.moveTo(x0 - 11, rBot + 1);
+  c.lineTo(x0 + halfTop - 1, rTop - 1);
+  c.lineTo(x0 + w - halfTop + 1, rTop - 1);
+  c.lineTo(x0 + w + 11, rBot + 1);
   c.closePath();
   c.fill();
-  c.fillStyle = '#b34a36';
-  for (let i = 1; i < 5; i++) {
-    const yy = y0 - 6 + (i * 2.4 * TILE) / 5;
-    const spread = 10 + ((i * 52) / 5);
-    c.fillRect(x0 - 10 + spread * 0.4, yy, w + 20 - spread * 0.8, 3);
+
+  c.fillStyle = '#c9563f';
+  c.beginPath();
+  c.moveTo(x0 - 10, rBot);
+  c.lineTo(x0 + halfTop, rTop);
+  c.lineTo(x0 + w - halfTop, rTop);
+  c.lineTo(x0 + w + 10, rBot);
+  c.closePath();
+  c.fill();
+
+  // 瓦片：横排 + 错位竖缝
+  const rows = 5;
+  for (let i = 0; i < rows; i++) {
+    const t0 = i / rows;
+    const yy = rTop + t0 * (rBot - rTop);
+    const spread = 10 + ((i * halfTop) / rows);
+    const left = x0 - 10 + spread * 0.4;
+    const right = x0 + w + 10 - spread * 0.4;
+    // 每排底部阴影线
+    c.fillStyle = '#a8402e';
+    c.fillRect(left, yy + (rBot - rTop) / rows - 2, right - left, 2);
+    // 每排顶部高光
+    c.fillStyle = '#e0795c';
+    c.fillRect(left, yy, right - left, 1);
+    // 竖向瓦缝（隔一排错位）
+    c.fillStyle = '#b34a36';
+    const gap = 12;
+    const off = i % 2 ? gap / 2 : 0;
+    for (let wx = left + off; wx < right; wx += gap) {
+      c.fillRect(wx, yy + 1, 1, (rBot - rTop) / rows - 3);
+    }
   }
+
+  // 屋脊高光
+  c.fillStyle = '#f0a08a';
+  c.fillRect(x0 + halfTop, rTop, w - halfTop * 2, 2);
+
   // 屋檐
+  c.fillStyle = '#6f2c1e';
+  c.fillRect(x0 - 11, rBot - 4, w + 22, 6);
   c.fillStyle = '#8f3a29';
-  c.fillRect(x0 - 10, y0 + 2.4 * TILE - 5, w + 20, 6);
+  c.fillRect(x0 - 11, rBot - 4, w + 22, 3);
 
-  // 烟囱
+  // ---- 烟囱 ----
+  c.fillStyle = '#6b5240';
+  c.fillRect(x0 + w - 72, y0 - 28, 24, 36);
   c.fillStyle = '#9c7a5a';
-  c.fillRect(x0 + w - 70, y0 - 26, 22, 34);
-  c.fillStyle = '#7d5f45';
-  c.fillRect(x0 + w - 74, y0 - 30, 30, 8);
+  c.fillRect(x0 + w - 70, y0 - 26, 20, 32);
+  c.fillStyle = '#b08f6e';
+  c.fillRect(x0 + w - 70, y0 - 26, 4, 32);
+  // 烟囱帽
+  c.fillStyle = '#6b5240';
+  c.fillRect(x0 + w - 76, y0 - 32, 32, 8);
+  c.fillStyle = '#8a6b52';
+  c.fillRect(x0 + w - 74, y0 - 30, 28, 4);
 
-  // 门
+  // ---- 门 ----
   const dx = x0 + 2 * TILE + 4;
+  const dy = y0 + 3.5 * TILE;
+  const dw = TILE - 8, dh = 1.5 * TILE;
+  c.fillStyle = '#5a3c22';
+  c.fillRect(dx - 1, dy - 1, dw + 2, dh + 1);
   c.fillStyle = '#6f4a2b';
-  c.fillRect(dx, y0 + 3.5 * TILE, TILE - 8, 1.5 * TILE);
+  c.fillRect(dx, dy, dw, dh);
   c.fillStyle = '#8a5f38';
-  c.fillRect(dx + 4, y0 + 3.5 * TILE + 4, TILE - 16, 1.5 * TILE - 8);
+  c.fillRect(dx + 4, dy + 4, dw - 8, dh - 6);
+  // 木纹
+  c.fillStyle = '#7d5533';
+  c.fillRect(dx + 8, dy + 6, 1, dh - 10);
+  c.fillRect(dx + dw - 12, dy + 6, 1, dh - 10);
+  // 门把
   c.fillStyle = '#e8c86a';
-  c.fillRect(dx + TILE - 18, y0 + 4.2 * TILE, 4, 4);
+  c.fillRect(dx + dw - 14, dy + dh / 2 - 2, 5, 5);
+  c.fillStyle = '#f7e3a0';
+  c.fillRect(dx + dw - 14, dy + dh / 2 - 2, 2, 2);
 
-  // 窗
-  c.fillStyle = '#7fb8d4';
-  c.fillRect(x0 + 26, y0 + 3.2 * TILE, 40, 30);
-  c.fillStyle = '#5d93b0';
-  c.fillRect(x0 + 44, y0 + 3.2 * TILE, 3, 30);
-  c.fillRect(x0 + 26, y0 + 3.2 * TILE + 13, 40, 3);
-  c.strokeStyle = '#8e6a44';
-  c.lineWidth = 3;
-  c.strokeRect(x0 + 26, y0 + 3.2 * TILE, 40, 30);
-  c.strokeStyle = '#ffffff';
-  c.lineWidth = 2;
-  c.strokeRect(x0 + w - 66, y0 + 3.2 * TILE, 40, 30);
-  c.fillStyle = '#7fb8d4';
-  c.fillRect(x0 + w - 64, y0 + 3.2 * TILE + 2, 36, 26);
-  c.fillStyle = '#5d93b0';
-  c.fillRect(x0 + w - 48, y0 + 3.2 * TILE + 2, 3, 26);
+  // ---- 窗（暖光 + 反光） ----
+  const winY = y0 + 3.2 * TILE;
+  const drawWindow = (wx: number) => {
+    // 外框
+    c.fillStyle = '#7a5334';
+    c.fillRect(wx - 2, winY - 2, 44, 34);
+    // 玻璃
+    c.fillStyle = '#8ec4dc';
+    c.fillRect(wx, winY, 40, 30);
+    // 下暗上亮
+    c.fillStyle = '#6fa8c4';
+    c.fillRect(wx, winY + 16, 40, 14);
+    // 反光斜条
+    c.fillStyle = 'rgba(255,255,255,.42)';
+    c.beginPath();
+    c.moveTo(wx + 6, winY + 30);
+    c.lineTo(wx + 18, winY);
+    c.lineTo(wx + 27, winY);
+    c.lineTo(wx + 15, winY + 30);
+    c.closePath();
+    c.fill();
+    // 窗棂
+    c.fillStyle = '#7a5334';
+    c.fillRect(wx + 18, winY, 3, 30);
+    c.fillRect(wx, winY + 13, 40, 3);
+  };
+  drawWindow(x0 + 26);
+  drawWindow(x0 + w - 68);
+
+  // 窗台
+  c.fillStyle = '#9b7350';
+  c.fillRect(x0 + 24, winY + 32, 44, 3);
+  c.fillRect(x0 + w - 70, winY + 32, 44, 3);
 }
 
 /* ---------------- 畜栏与棚舍 ---------------- */
@@ -448,47 +587,86 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
   // 幼崽整体缩小
   const scale = a.adult ? 1 : 0.62;
 
-  c.fillStyle = 'rgba(60,40,20,.22)';
-  c.beginPath();
-  c.ellipse(x, a.y + 2, (a.kind === 'cow' ? 16 : 9) * scale, 4 * scale, 0, 0, Math.PI * 2);
-  c.fill();
+  softShadow(c, x, a.y + 2, (a.kind === 'cow' ? 15 : 9) * scale, 3.6 * scale, 0.28);
 
   c.save();
   c.translate(x, y);
   if (faceLeft) c.scale(-1, 1);
   if (scale !== 1) c.scale(scale, scale);
 
+  const white = MAT.white;
+
   if (a.kind === 'chicken') {
-    // 身体
-    c.fillStyle = '#f5f0e6';
-    c.beginPath(); c.ellipse(0, -8, 9, 7, 0, 0, Math.PI * 2); c.fill();
-    // 尾
-    c.fillStyle = '#e0d6c2';
+    // 尾（先画，压在身体后）
+    c.fillStyle = shift(white.base, -40);
+    c.beginPath(); c.moveTo(-7, -11); c.lineTo(-14, -16); c.lineTo(-6, -14); c.closePath(); c.fill();
+    c.fillStyle = shift(white.base, -14);
     c.beginPath(); c.moveTo(-8, -10); c.lineTo(-13, -15); c.lineTo(-7, -13); c.closePath(); c.fill();
+
+    // 身体：描边 + 本体 + 受光
+    c.fillStyle = white.line;
+    c.beginPath(); c.ellipse(0, -8, 10, 8, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = white.base;
+    c.beginPath(); c.ellipse(0, -8, 9, 7, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = white.hi;
+    c.beginPath(); c.ellipse(-2, -11, 5.5, 4, -0.3, 0, Math.PI * 2); c.fill();
+
     // 头
-    c.fillStyle = '#f5f0e6';
+    c.fillStyle = white.line;
+    c.beginPath(); c.arc(7, -14, 6, 0, Math.PI * 2); c.fill();
+    c.fillStyle = white.base;
     c.beginPath(); c.arc(7, -14, 5, 0, Math.PI * 2); c.fill();
+    c.fillStyle = white.hi;
+    c.beginPath(); c.arc(5.5, -16, 2.4, 0, Math.PI * 2); c.fill();
+
     // 冠
+    c.fillStyle = '#b8352c';
+    c.fillRect(4, -21, 4, 5);
     c.fillStyle = '#d94f43';
     c.fillRect(5, -20, 3, 4); c.fillRect(8, -21, 3, 5);
+    c.fillStyle = '#ec7a6a';
+    c.fillRect(5, -20, 3, 1); c.fillRect(8, -21, 3, 1);
+
     // 喙
+    c.fillStyle = '#b87a24';
+    c.beginPath(); c.moveTo(11, -15); c.lineTo(17, -13); c.lineTo(11, -11); c.closePath(); c.fill();
     c.fillStyle = '#e8a13c';
     c.beginPath(); c.moveTo(11, -14); c.lineTo(16, -13); c.lineTo(11, -12); c.closePath(); c.fill();
-    // 眼
-    c.fillStyle = '#3d2b1f'; c.fillRect(8, -15, 2, 2);
+
+    // 眼（带高光）
+    c.fillStyle = '#3d2b1f'; c.fillRect(8, -16, 3, 3);
+    c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(8, -16, 1, 1);
+
     // 腿
-    c.strokeStyle = '#e8a13c'; c.lineWidth = 2;
+    c.strokeStyle = '#b87a24'; c.lineWidth = 2.4;
     const step = a.moving ? Math.sin(nowMs / 100) * 2 : 0;
     c.beginPath(); c.moveTo(-2, -2); c.lineTo(-2 + step, 2); c.moveTo(3, -2); c.lineTo(3 - step, 2); c.stroke();
+    c.strokeStyle = '#e8a13c'; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(-2, -2); c.lineTo(-2 + step, 2); c.moveTo(3, -2); c.lineTo(3 - step, 2); c.stroke();
   } else if (a.kind === 'sheep') {
-    // 羊：蓬松的云朵状羊毛
+    // 羊：蓬松的云朵状羊毛（毛越长越蓬）
     const fluffy = Math.min(1, (a.wool ?? 0) / 100);
-    const r = 9 + fluffy * 5; // 毛长长了会变大
+    const r = 9 + fluffy * 5;
+    const puffs: Array<[number, number, number]> = [
+      [-8, -10, r], [2, -13, r * 1.05], [10, -9, r * 0.9], [-2, -6, r * 0.95], [6, -5, r * 0.85]
+    ];
+    // 描边层
+    c.fillStyle = '#b8ac98';
+    for (const [dx, dy, rr] of puffs) {
+      c.beginPath(); c.arc(dx, dy, rr + 1.2, 0, Math.PI * 2); c.fill();
+    }
+    // 本体
     c.fillStyle = '#f7f4ec';
-    for (const [dx, dy, rr] of [[-8, -10, r], [2, -13, r * 1.05], [10, -9, r * 0.9], [-2, -6, r * 0.95], [6, -5, r * 0.85]]) {
+    for (const [dx, dy, rr] of puffs) {
       c.beginPath(); c.arc(dx, dy, rr, 0, Math.PI * 2); c.fill();
     }
+    // 左上受光
+    c.fillStyle = '#fffdf7';
+    c.beginPath(); c.arc(-6, -14, r * 0.55, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(3, -16, r * 0.45, 0, Math.PI * 2); c.fill();
     // 头
+    c.fillStyle = '#c4b49c';
+    c.beginPath(); c.ellipse(15, -14, 7, 6, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#e8ded0';
     c.beginPath(); c.ellipse(15, -14, 6, 5, 0, 0, Math.PI * 2); c.fill();
     // 耳朵
@@ -504,29 +682,46 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
     c.fillRect(5, -4 + sstep * 0.3, 3, 6);
     c.fillRect(10, -4 - sstep * 0.3, 3, 6);
   } else {
-    // 牛身体
-    c.fillStyle = '#f2ede2';
+    // 牛：描边 + 本体 + 受光
+    c.fillStyle = '#b0a894';
+    c.beginPath(); c.ellipse(0, -12, 17, 11, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#f7f2e8';
     c.beginPath(); c.ellipse(0, -12, 16, 10, 0, 0, Math.PI * 2); c.fill();
+    // 背部受光
+    c.fillStyle = '#fffdf7';
+    c.beginPath(); c.ellipse(-3, -16, 10, 4.5, -0.15, 0, Math.PI * 2); c.fill();
     // 斑
     c.fillStyle = '#4a3a30';
-    c.beginPath(); c.ellipse(-6, -15, 5, 4, 0.4, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(-6, -14, 5, 4, 0.4, 0, Math.PI * 2); c.fill();
     c.beginPath(); c.ellipse(5, -9, 4, 3, -0.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#65524a';
+    c.beginPath(); c.ellipse(-6, -15, 2.4, 1.8, 0.4, 0, Math.PI * 2); c.fill();
     // 头
-    c.fillStyle = '#f2ede2';
+    c.fillStyle = '#b0a894';
+    c.beginPath(); c.ellipse(15, -16, 8, 7, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#f7f2e8';
     c.beginPath(); c.ellipse(15, -16, 7, 6, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#e8b8a0';
-    c.beginPath(); c.ellipse(18, -13, 4, 3, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#fffdf7';
+    c.beginPath(); c.ellipse(13, -19, 3.4, 2.2, -0.3, 0, Math.PI * 2); c.fill();
+    // 鼻子
+    c.fillStyle = '#c99880';
+    c.beginPath(); c.ellipse(18, -13, 4.4, 3.4, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#a87860';
+    c.fillRect(16, -14, 1, 1); c.fillRect(20, -14, 1, 1);
     // 角 / 耳
-    c.fillStyle = '#c9b89a';
-    c.fillRect(12, -23, 3, 4); c.fillRect(17, -23, 3, 4);
-    // 眼
-    c.fillStyle = '#3d2b1f'; c.fillRect(14, -18, 2, 2);
+    c.fillStyle = '#a8946a';
+    c.fillRect(11, -24, 4, 5); c.fillRect(17, -24, 4, 5);
+    c.fillStyle = '#d0bc90';
+    c.fillRect(12, -23, 2, 3); c.fillRect(18, -23, 2, 3);
+    // 眼（带高光）
+    c.fillStyle = '#3d2b1f'; c.fillRect(13, -19, 3, 3);
+    c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(13, -19, 1, 1);
     // 腿
-    c.fillStyle = '#e0d6c2';
+    c.fillStyle = '#c9bda6';
     const step = a.moving ? Math.sin(nowMs / 140) * 2 : 0;
-    c.fillRect(-10, -4 + step * 0.3, 4, 6);
-    c.fillRect(-3, -4 - step * 0.3, 4, 6);
-    c.fillRect(4, -4 + step * 0.3, 4, 6);
+    c.fillRect(-11, -4 + step * 0.3, 5, 7);
+    c.fillRect(-3, -4 - step * 0.3, 5, 7);
+    c.fillRect(4, -4 + step * 0.3, 5, 7);
     c.fillRect(10, -4 - step * 0.3, 4, 6);
     // 乳房
     c.fillStyle = '#e8b8a0';
@@ -622,7 +817,7 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   ents.push({
     y: state.player.y + 2,
-    draw: () => drawFarmer(ctx, state.player.x, state.player.y, state.player.dir, state.player.walkT, state.player.moving)
+    draw: () => drawFarmer(ctx, state.player.x, state.player.y, state.player.dir, state.player.walkT, state.player.moving, nowMs)
   });
 
   ents.sort((a, b) => a.y - b.y);
@@ -650,25 +845,50 @@ function drawPlot(c: Ctx, plot: Plot, x: number, y: number, nowMs: number) {
   const cx = x + TILE / 2;
 
   if (plot.tilled) {
-    c.fillStyle = plot.watered ? '#5f4128' : '#7a5233';
-    c.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
-    // 垄沟
-    c.fillStyle = plot.watered ? '#503620' : '#6b482c';
+    const sh = plot.watered ? MAT.soilWet : MAT.soil;
+    // 外沿（略深，形成田埂）
+    c.fillStyle = sh.line;
+    c.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+    // 土面
+    c.fillStyle = sh.base;
+    c.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+    // 上缘受光
+    c.fillStyle = sh.hi;
+    c.fillRect(x + 3, y + 3, TILE - 6, 1);
+    // 垄沟：暗槽 + 上沿高光
     for (let i = 0; i < 3; i++) {
-      c.fillRect(x + 6, y + 10 + i * 12, TILE - 12, 4);
+      const gy = y + 11 + i * 12;
+      c.fillStyle = sh.dark;
+      c.fillRect(x + 7, gy, TILE - 14, 4);
+      c.fillStyle = sh.hi;
+      c.fillRect(x + 7, gy - 1, TILE - 14, 1);
     }
     if (plot.watered) {
-      c.fillStyle = 'rgba(120,200,240,.20)';
-      c.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+      // 湿润反光
+      c.fillStyle = 'rgba(140,210,240,.16)';
+      c.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
     }
   } else {
-    // 未开垦：杂草
-    c.fillStyle = '#8f7a52';
+    // 未开垦：土块 + 杂草
+    c.fillStyle = '#8a7550';
     c.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
-    c.fillStyle = '#7aa85c';
+    c.fillStyle = '#9b855c';
+    c.fillRect(x + 2, y + 2, TILE - 4, 1);
+    // 土块
+    for (let i = 0; i < 5; i++) {
+      const r = hash(x + i * 3, y + i * 5);
+      c.fillStyle = i % 2 ? '#7d6944' : '#a08a60';
+      c.fillRect(Math.floor(x + 5 + r * 34), Math.floor(y + 6 + hash(y + i, x) * 32), 4, 3);
+    }
+    // 杂草
     for (let i = 0; i < 4; i++) {
       const r = hash(x + i, y + i * 3);
-      c.fillRect(x + 8 + r * 28, y + 10 + hash(y + i, x) * 26, 3, 5);
+      const px = Math.floor(x + 8 + r * 28);
+      const py = Math.floor(y + 12 + hash(y + i, x) * 24);
+      c.fillStyle = '#5f8a44';
+      c.fillRect(px, py, 2, 6);
+      c.fillStyle = '#7aa85c';
+      c.fillRect(px, py, 2, 2);
     }
   }
 
@@ -677,106 +897,145 @@ function drawPlot(c: Ctx, plot: Plot, x: number, y: number, nowMs: number) {
   }
 }
 
+/** 圆润果实：描边 + 本体 + 左上高光，统一光照 */
+function fruitBall(c: Ctx, x: number, y: number, r: number, color: string) {
+  c.fillStyle = shift(color, -46);
+  c.beginPath(); c.arc(x, y, r + 1, 0, Math.PI * 2); c.fill();
+  c.fillStyle = color;
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  c.fillStyle = shift(color, 34);
+  c.beginPath();
+  c.ellipse(x - r * 0.3, y - r * 0.34, r * 0.4, r * 0.3, -0.5, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = 'rgba(255,255,255,.6)';
+  c.beginPath();
+  c.ellipse(x - r * 0.34, y - r * 0.38, r * 0.16, r * 0.12, -0.5, 0, Math.PI * 2);
+  c.fill();
+}
+
+/** 叶片：描边 + 本体 + 叶脉高光 */
+function leafBlob(c: Ctx, x: number, y: number, rx: number, ry: number, rot: number, color: string) {
+  c.fillStyle = shift(color, -40);
+  c.beginPath(); c.ellipse(x, y, rx + 1, ry + 1, rot, 0, Math.PI * 2); c.fill();
+  c.fillStyle = color;
+  c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); c.fill();
+  c.fillStyle = shift(color, 22);
+  c.beginPath();
+  c.ellipse(x - rx * 0.2, y - ry * 0.25, rx * 0.5, ry * 0.34, rot, 0, Math.PI * 2);
+  c.fill();
+}
+
 function drawCrop(c: Ctx, cx: number, baseY: number, plot: Plot, cropId: CropId, nowMs: number) {
   const def = CROPS[cropId];
   const g = Math.min(1, plot.stage / def.days);
   const ready = plot.stage >= def.days;
 
+  // 刚播下：土堆 + 小芽
   if (plot.stage === 0) {
     c.fillStyle = '#5a3f27';
     c.beginPath();
     c.ellipse(cx, baseY - 2, 9, 4, 0, 0, Math.PI * 2);
     c.fill();
+    c.fillStyle = '#6e4f31';
+    c.beginPath();
+    c.ellipse(cx - 1, baseY - 3, 7, 3, 0, 0, Math.PI * 2);
+    c.fill();
+    // 小芽
+    c.fillStyle = shift(def.leaf, -42);
+    c.fillRect(cx - 2, baseY - 11, 4, 9);
     c.fillStyle = def.leaf;
-    c.fillRect(cx - 2, baseY - 10, 4, 8);
-    c.fillRect(cx - 6, baseY - 12, 5, 3);
+    c.fillRect(cx - 2, baseY - 11, 3, 8);
+    c.fillStyle = shift(def.leaf, 26);
+    c.fillRect(cx - 2, baseY - 11, 1, 6);
     return;
   }
 
   const stemH = 8 + 26 * g;
   const sway = Math.sin(nowMs / 700 + cx) * (ready ? 1.2 : 0.6);
 
-  // 茎
-  c.strokeStyle = shade(def.leaf, -18);
-  c.lineWidth = 3;
+  // 茎：深色描边 + 本色 + 受光侧
+  c.strokeStyle = shift(def.leaf, -44);
+  c.lineWidth = 4;
   c.beginPath();
   c.moveTo(cx, baseY);
   c.quadraticCurveTo(cx + sway, baseY - stemH * 0.6, cx + sway * 1.4, baseY - stemH);
   c.stroke();
-
-  // 叶
-  const leafY = baseY - stemH * 0.75;
-  c.fillStyle = def.leaf;
-  for (const s of [-1, 1]) {
-    c.beginPath();
-    c.ellipse(cx + sway * 0.6 + s * 8 * g + s * 3, leafY - s * 3, 9 * g + 3, 5 * g + 2, s * 0.5, 0, Math.PI * 2);
-    c.fill();
-  }
-  c.fillStyle = shade(def.leaf, 16);
+  c.strokeStyle = def.leaf;
+  c.lineWidth = 2.5;
   c.beginPath();
-  c.ellipse(cx + sway * 1.2, baseY - stemH - 2, 6 * g + 2, 4 * g + 2, 0, 0, Math.PI * 2);
-  c.fill();
+  c.moveTo(cx, baseY);
+  c.quadraticCurveTo(cx + sway, baseY - stemH * 0.6, cx + sway * 1.4, baseY - stemH);
+  c.stroke();
+  c.strokeStyle = shift(def.leaf, 30);
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(cx - 0.6, baseY);
+  c.quadraticCurveTo(cx + sway - 0.6, baseY - stemH * 0.6, cx + sway * 1.4 - 0.6, baseY - stemH);
+  c.stroke();
+
+  // 叶：左右两片 + 顶叶
+  const leafY = baseY - stemH * 0.75;
+  for (const s of [-1, 1]) {
+    leafBlob(c, cx + sway * 0.6 + s * 8 * g + s * 3, leafY - s * 3, 9 * g + 3, 5 * g + 2, s * 0.5, def.leaf);
+  }
+  leafBlob(c, cx + sway * 1.2, baseY - stemH - 2, 6 * g + 2, 4 * g + 2, 0, shift(def.leaf, 16));
 
   if (!ready) return;
 
   // 成熟果实
   const fy = baseY - stemH * 0.55;
-  c.fillStyle = def.fruit;
   switch (def.shape) {
     case 'root': {
-      c.beginPath();
-      c.ellipse(cx, baseY - 4, 10, 8, 0, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = shade(def.fruit, 30);
-      c.beginPath();
-      c.ellipse(cx - 2, baseY - 6, 4, 3, 0, 0, Math.PI * 2);
-      c.fill();
+      c.fillStyle = shift(def.fruit, -46);
+      c.beginPath(); c.ellipse(cx, baseY - 4, 11, 9, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = def.fruit;
+      c.beginPath(); c.ellipse(cx, baseY - 4, 10, 8, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = shift(def.fruit, 26);
+      c.beginPath(); c.ellipse(cx - 3, baseY - 7, 4.5, 3.2, -0.3, 0, Math.PI * 2); c.fill();
       break;
     }
     case 'round': {
-      const n = 2;
-      for (let i = 0; i < n; i++) {
-        c.fillStyle = i % 2 ? shade(def.fruit, 20) : def.fruit;
-        c.beginPath();
-        c.arc(cx + (i === 0 ? -6 : 7), fy + i * 4, 7, 0, Math.PI * 2);
-        c.fill();
-      }
+      fruitBall(c, cx - 6, fy, 7, def.fruit);
+      fruitBall(c, cx + 7, fy + 4, 6.5, shift(def.fruit, 18));
       break;
     }
     case 'long': {
+      c.fillStyle = shift(def.fruit, -46);
+      c.beginPath(); c.ellipse(cx + 4, fy - 2, 6, 12, 0.18, 0, Math.PI * 2); c.fill();
       c.fillStyle = def.fruit;
-      c.beginPath();
-      c.ellipse(cx + 4, fy - 2, 5, 11, 0.18, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = shade(def.fruit, 26);
-      c.fillRect(cx + 2, fy - 10, 3, 12);
+      c.beginPath(); c.ellipse(cx + 4, fy - 2, 5, 11, 0.18, 0, Math.PI * 2); c.fill();
+      c.fillStyle = shift(def.fruit, 30);
+      c.fillRect(cx + 2, fy - 10, 2, 12);
+      // 玉米须
+      c.fillStyle = '#c9d96a';
+      c.fillRect(cx + 7, fy - 13, 1, 4);
       break;
     }
     case 'berry': {
-      c.fillStyle = def.fruit;
       for (const [dx, dy] of [[-6, 0], [4, -3], [-1, 6], [8, 5]]) {
-        c.beginPath();
-        c.arc(cx + dx, fy + dy, 4.5, 0, Math.PI * 2);
-        c.fill();
+        fruitBall(c, cx + dx, fy + dy, 4.5, def.fruit);
       }
       break;
     }
     case 'gourd': {
+      c.fillStyle = shift(def.fruit, -46);
+      c.beginPath(); c.ellipse(cx, baseY - 8, 14, 11, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = def.fruit;
-      c.beginPath();
-      c.ellipse(cx, baseY - 8, 13, 10, 0, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = shade(def.fruit, -22);
-      c.fillRect(cx - 3, baseY - 16, 3, 8);
+      c.beginPath(); c.ellipse(cx, baseY - 8, 13, 10, 0, 0, Math.PI * 2); c.fill();
+      // 瓜棱
+      c.fillStyle = shift(def.fruit, -22);
+      c.fillRect(cx - 5, baseY - 16, 2, 16);
+      c.fillRect(cx + 4, baseY - 16, 2, 16);
+      c.fillStyle = shift(def.fruit, 30);
+      c.beginPath(); c.ellipse(cx - 5, baseY - 12, 3.5, 2.6, -0.3, 0, Math.PI * 2); c.fill();
+      // 瓜蒂
+      c.fillStyle = '#5f8a44';
+      c.fillRect(cx - 2, baseY - 20, 4, 5);
       break;
     }
     case 'leafy': {
-      // 菠菜：一丛贴地的叶片
       for (const [dx, dy, rot] of [[-7, -2, -0.5], [0, -5, 0], [7, -2, 0.5], [-3, 1, -0.2], [4, 1, 0.2]]) {
-        c.fillStyle = shade(def.fruit, dy < -3 ? 18 : 0);
-        c.beginPath();
-        c.ellipse(cx + dx, baseY + dy - 4, 5, 8, rot, 0, Math.PI * 2);
-        c.fill();
+        leafBlob(c, cx + dx, baseY + dy - 4, 5, 8, rot, dy < -3 ? shift(def.fruit, 18) : def.fruit);
       }
       break;
     }
@@ -784,9 +1043,9 @@ function drawCrop(c: Ctx, cx: number, baseY: number, plot: Plot, cropId: CropId,
 
   // 成熟微光
   const tw = (Math.sin(nowMs / 300 + cx) + 1) / 2;
-  c.fillStyle = `rgba(255,246,190,${0.18 + tw * 0.22})`;
+  c.fillStyle = `rgba(255,246,190,${0.2 + tw * 0.28})`;
   c.beginPath();
-  c.arc(cx + 9, fy - 10, 2.4, 0, Math.PI * 2);
+  c.arc(cx + 9, fy - 10, 2.6, 0, Math.PI * 2);
   c.fill();
 }
 
@@ -871,89 +1130,147 @@ function drawObject(c: Ctx, kind: 'bin' | 'order' | 'store', x: number, y: numbe
 
 /* ---------------- 角色 ---------------- */
 
-function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, moving: boolean) {
+/**
+ * 带描边 + 顶部高光的矩形部件。
+ * 像素风角色的轮廓靠这个统一出来，不用逐部件算轮廓。
+ */
+function part(
+  c: Ctx, x: number, y: number, w: number, h: number,
+  fill: string, line: string, hi?: string
+): void {
+  c.fillStyle = line;
+  c.fillRect(x - 1, y - 1, w + 2, h + 2);
+  c.fillStyle = fill;
+  c.fillRect(x, y, w, h);
+  if (hi) {
+    c.fillStyle = hi;
+    c.fillRect(x, y, w, 2);
+  }
+}
+
+function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, moving: boolean, nowMs: number) {
   const bob = moving ? Math.sin(walkT * 12) * 1.2 : 0;
   const swing = moving ? Math.sin(walkT * 12) : 0;
+  // 站立时轻微呼吸：身体上下浮 0.5px
+  const breath = moving ? 0 : Math.sin(nowMs / 900) * 0.5;
+  // 每隔约 3.6 秒眨一次眼
+  const blink = (nowMs % 3600) < 130;
 
-  // 影子
-  c.fillStyle = 'rgba(60,40,20,.25)';
-  c.beginPath();
-  c.ellipse(px, py + 1, 11, 4, 0, 0, Math.PI * 2);
-  c.fill();
+  softShadow(c, px, py + 1, 9, 3.4, 0.3);
 
   c.save();
-  c.translate(Math.round(px), Math.round(py + bob));
+  c.translate(Math.round(px), Math.round(py + bob + breath));
 
-  const skin = '#f3c9a0';
-  const shirt = '#f0e6d2';
-  const overall = '#4a6fa5';
-  const hat = '#e8c86a';
-  const hatDark = '#c9a748';
-  const boot = '#5b3d26';
+  const skin = MAT.skin.base;
+  const skinHi = MAT.skin.hi;
+  const skinLine = MAT.skin.line;
+  const shirt = CHAR.farmerShirt.base;
+  const shirtHi = CHAR.farmerShirt.hi;
+  const shirtLine = CHAR.farmerShirt.line;
+  const overall = CHAR.farmerOverall.base;
+  const overallHi = CHAR.farmerOverall.hi;
+  const hat = CHAR.hat.base;
+  const hatHi = CHAR.hat.hi;
+  const hatLine = CHAR.hat.line;
+  const boot = MAT.ink.base;
 
-  // 腿
+  // 腿（不描边，避免小尺寸糊成一团）
   c.fillStyle = overall;
   c.fillRect(-7, -12 + swing * 1.5, 6, 12);
   c.fillRect(1, -12 - swing * 1.5, 6, 12);
+  c.fillStyle = overallHi;
+  c.fillRect(-7, -12 + swing * 1.5, 2, 10);
   c.fillStyle = boot;
-  c.fillRect(-7, -4 + swing * 1.5, 6, 4);
-  c.fillRect(1, -4 - swing * 1.5, 6, 4);
+  c.fillRect(-8, -4 + swing * 1.5, 7, 4);
+  c.fillRect(0, -4 - swing * 1.5, 7, 4);
 
-  // 身体
-  c.fillStyle = shirt;
-  c.fillRect(-9, -26, 18, 15);
+  // 身体（白衬衫 + 蓝背带裤）
+  part(c, -9, -26, 18, 15, shirt, shirtLine, shirtHi);
   c.fillStyle = overall;
   c.fillRect(-8, -20, 16, 9);
-  c.fillRect(-8, -26, 5, 8);
-  c.fillRect(3, -26, 5, 8);
-  c.fillStyle = '#3d5c88';
+  c.fillStyle = overallHi;
   c.fillRect(-8, -20, 16, 2);
+  // 背带
+  c.fillStyle = overall;
+  c.fillRect(-8, -26, 4, 8);
+  c.fillRect(4, -26, 4, 8);
 
   // 手臂
-  c.fillStyle = shirt;
+  const armY1 = -24 + swing * 2;
+  const armY2 = -24 - swing * 2;
   if (dir === 'left') {
-    c.fillRect(-13, -24 + swing * 2, 5, 11);
+    part(c, -13, armY1, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin;
+    c.fillRect(-13, armY1 + 10, 5, 4);
   } else if (dir === 'right') {
-    c.fillRect(8, -24 - swing * 2, 5, 11);
+    part(c, 8, armY2, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin;
+    c.fillRect(8, armY2 + 10, 5, 4);
   } else {
-    c.fillRect(-13, -24 + swing * 2, 5, 11);
-    c.fillRect(8, -24 - swing * 2, 5, 11);
+    part(c, -13, armY1, 5, 11, shirt, shirtLine);
+    part(c, 8, armY2, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin;
+    c.fillRect(-13, armY1 + 10, 5, 4);
+    c.fillRect(8, armY2 + 10, 5, 4);
   }
-  c.fillStyle = skin;
-  c.fillRect(dir === 'left' ? -13 : (dir === 'right' ? 8 : -13), -14 + swing * 2, 5, 4);
-  if (dir !== 'left' && dir !== 'right') c.fillRect(8, -14 - swing * 2, 5, 4);
 
   // 头
-  c.fillStyle = skin;
-  c.fillRect(-8, -40, 16, 15);
-  c.fillStyle = '#6b4a2e';
+  part(c, -8, -40, 16, 15, skin, skinLine, skinHi);
   if (dir !== 'up') {
+    // 头发（刘海）
+    c.fillStyle = '#7a5230';
     c.fillRect(-8, -40, 16, 4);
-    // 眼睛
+    c.fillStyle = '#8f6438';
+    c.fillRect(-8, -40, 16, 1);
+    // 眼睛（眨眼时压成一条线）
     c.fillStyle = '#3d2b1f';
     if (dir === 'down') {
-      c.fillRect(-5, -33, 3, 3);
-      c.fillRect(3, -33, 3, 3);
-      c.fillStyle = '#e8a48a';
-      c.fillRect(-1, -30, 3, 2);
+      if (blink) {
+        c.fillRect(-5, -32, 3, 1);
+        c.fillRect(3, -32, 3, 1);
+      } else {
+        c.fillRect(-5, -33, 3, 3);
+        c.fillRect(3, -33, 3, 3);
+        // 眼里高光
+        c.fillStyle = 'rgba(255,255,255,.75)';
+        c.fillRect(-5, -33, 1, 1);
+        c.fillRect(3, -33, 1, 1);
+        c.fillStyle = '#e8a48a';
+        c.fillRect(-1, -30, 3, 2);
+      }
     } else if (dir === 'left') {
-      c.fillRect(-6, -33, 3, 3);
+      c.fillRect(-6, blink ? -32 : -33, 3, blink ? 1 : 3);
     } else {
-      c.fillRect(3, -33, 3, 3);
+      c.fillRect(3, blink ? -32 : -33, 3, blink ? 1 : 3);
     }
   } else {
-    c.fillStyle = '#6b4a2e';
+    // 背面：整片头发
+    c.fillStyle = '#7a5230';
     c.fillRect(-8, -40, 16, 15);
+    c.fillStyle = '#8f6438';
+    c.fillRect(-8, -40, 16, 1);
   }
 
-  // 草帽
+  // 草帽（帽檐 + 帽冠 + 缎带）
+  c.fillStyle = hatLine;
+  c.fillRect(-13, -43, 26, 6);
   c.fillStyle = hat;
   c.fillRect(-12, -42, 24, 4);
+  c.fillStyle = hatHi;
+  c.fillRect(-12, -42, 24, 1);
+
+  c.fillStyle = hatLine;
+  c.fillRect(-9, -49, 18, 8);
+  c.fillStyle = hat;
   c.fillRect(-8, -48, 16, 7);
-  c.fillStyle = hatDark;
-  c.fillRect(-12, -39, 24, 2);
+  c.fillStyle = hatHi;
+  c.fillRect(-8, -48, 6, 2);
+
+  // 缎带
   c.fillStyle = '#c4553f';
-  c.fillRect(-8, -44, 16, 2);
+  c.fillRect(-8, -45, 16, 2);
+  c.fillStyle = '#d9755c';
+  c.fillRect(-8, -45, 16, 1);
 
   c.restore();
 }
@@ -966,57 +1283,84 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
   const bob = v.moving ? Math.sin(nowMs / 120 + v.x) * 1.2 : 0;
   const swing = v.moving ? Math.sin(nowMs / 120 + v.x) : 0;
 
-  c.fillStyle = 'rgba(60,40,20,.25)';
-  c.beginPath();
-  c.ellipse(v.x, v.y + 1, 11, 4, 0, 0, Math.PI * 2);
-  c.fill();
+  softShadow(c, v.x, v.y + 1, 9, 3.4, 0.3);
 
   c.save();
   c.translate(Math.round(v.x), Math.round(v.y + bob));
 
-  const skin = '#f3c9a0';
-  const pants = '#5a4a3e';
+  const skin = MAT.skin.base;
+  const skinHi = MAT.skin.hi;
+  const skinLine = MAT.skin.line;
+  const pants = '#6b5a4c';
   const hair = '#4a3a2e';
-  const boot = '#3d2b1f';
+  const hairHi = '#6b5544';
+  const boot = MAT.ink.base;
+  const shirtHi = shift(shirt, 26);
+  const shirtLine = shift(shirt, -52);
 
-  // 腿
+  // 腿（不描边）
   c.fillStyle = pants;
   c.fillRect(-7, -12 + swing * 1.5, 6, 12);
   c.fillRect(1, -12 - swing * 1.5, 6, 12);
+  c.fillStyle = shift(pants, 18);
+  c.fillRect(-7, -12 + swing * 1.5, 2, 10);
   c.fillStyle = boot;
-  c.fillRect(-7, -4 + swing * 1.5, 6, 4);
-  c.fillRect(1, -4 - swing * 1.5, 6, 4);
+  c.fillRect(-8, -4 + swing * 1.5, 7, 4);
+  c.fillRect(0, -4 - swing * 1.5, 7, 4);
 
-  // 身体
-  c.fillStyle = shirt;
-  c.fillRect(-9, -26, 18, 15);
-  c.fillStyle = 'rgba(0,0,0,.15)';
-  c.fillRect(-9, -13, 18, 2);
+  // 身体（描边 + 本色 + 受光）
+  part(c, -9, -26, 18, 15, shirt, shirtLine, shirtHi);
+  // 衣摆暗部
+  c.fillStyle = shift(shirt, -22);
+  c.fillRect(-8, -13, 16, 2);
 
   // 手臂
-  c.fillStyle = shirt;
-  if (v.dir === 'left') c.fillRect(-13, -24 + swing * 2, 5, 11);
-  else if (v.dir === 'right') c.fillRect(8, -24 - swing * 2, 5, 11);
-  else { c.fillRect(-13, -24 + swing * 2, 5, 11); c.fillRect(8, -24 - swing * 2, 5, 11); }
-  c.fillStyle = skin;
-  if (v.dir === 'left') c.fillRect(-13, -14 + swing * 2, 5, 4);
-  else if (v.dir === 'right') c.fillRect(8, -14 - swing * 2, 5, 4);
-  else { c.fillRect(-13, -14 + swing * 2, 5, 4); c.fillRect(8, -14 - swing * 2, 5, 4); }
+  const ay1 = -24 + swing * 2;
+  const ay2 = -24 - swing * 2;
+  if (v.dir === 'left') {
+    part(c, -13, ay1, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin; c.fillRect(-13, ay1 + 10, 5, 4);
+  } else if (v.dir === 'right') {
+    part(c, 8, ay2, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin; c.fillRect(8, ay2 + 10, 5, 4);
+  } else {
+    part(c, -13, ay1, 5, 11, shirt, shirtLine);
+    part(c, 8, ay2, 5, 11, shirt, shirtLine);
+    c.fillStyle = skin;
+    c.fillRect(-13, ay1 + 10, 5, 4);
+    c.fillRect(8, ay2 + 10, 5, 4);
+  }
 
-  // 头
-  c.fillStyle = skin;
-  c.fillRect(-8, -40, 16, 15);
+  // 头（描边 + 受光）
+  part(c, -8, -40, 16, 15, skin, skinLine, skinHi);
+
   // 头发
-  c.fillStyle = hair;
-  c.fillRect(-8, -42, 16, 5);
-  c.fillRect(-8, -40, 3, 6);
-  c.fillRect(5, -40, 3, 6);
-  // 眼睛
+  if (v.dir !== 'up') {
+    c.fillStyle = hair;
+    c.fillRect(-9, -43, 18, 6);
+    c.fillRect(-9, -40, 3, 8);
+    c.fillRect(6, -40, 3, 8);
+    c.fillStyle = hairHi;
+    c.fillRect(-9, -43, 18, 2);
+  } else {
+    c.fillStyle = hair;
+    c.fillRect(-9, -43, 18, 18);
+    c.fillStyle = hairHi;
+    c.fillRect(-9, -43, 18, 2);
+  }
+
+  // 眼睛（带高光）
   if (v.dir !== 'up') {
     c.fillStyle = '#3d2b1f';
-    if (v.dir === 'down') { c.fillRect(-5, -33, 3, 3); c.fillRect(3, -33, 3, 3); }
-    else if (v.dir === 'left') c.fillRect(-6, -33, 3, 3);
-    else c.fillRect(3, -33, 3, 3);
+    if (v.dir === 'down') {
+      c.fillRect(-5, -33, 3, 3); c.fillRect(3, -33, 3, 3);
+      c.fillStyle = 'rgba(255,255,255,.8)';
+      c.fillRect(-5, -33, 1, 1); c.fillRect(3, -33, 1, 1);
+    } else if (v.dir === 'left') {
+      c.fillRect(-6, -33, 3, 3);
+    } else {
+      c.fillRect(3, -33, 3, 3);
+    }
   }
 
   c.restore();
@@ -1025,10 +1369,13 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
   if (def) {
     c.font = 'bold 11px "PingFang SC",sans-serif';
     c.textAlign = 'center';
-    c.fillStyle = 'rgba(45,32,22,.75)';
-    const w = c.measureText(def.name).width + 10;
+    const w = c.measureText(def.name).width + 12;
+    // 描边底 + 填充
+    c.fillStyle = 'rgba(45,32,22,.55)';
+    c.fillRect(v.x - w / 2 - 1, v.y - 59, w + 2, 16);
+    c.fillStyle = 'rgba(245,235,215,.94)';
     c.fillRect(v.x - w / 2, v.y - 58, w, 14);
-    c.fillStyle = '#fff4d8';
+    c.fillStyle = '#4a3320';
     c.fillText(def.name, v.x, v.y - 48);
     c.textAlign = 'left';
   }

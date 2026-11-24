@@ -441,9 +441,13 @@ function drawIndoorWalls(c: Ctx, scene: string) {
   const H = MAP_H * TILE;
 
   // 1) 房间外压暗：突出「房间在一个更大的建筑内部」
+  //    注意跳过门格那一格，否则门会被一起压暗
+  const doorPx = r.door.tx * TILE;
   c.fillStyle = 'rgba(8,6,5,.80)';
   c.fillRect(0, 0, W, T0);
-  c.fillRect(0, B, W, H - B);
+  c.fillRect(0, B + TILE, W, H - B - TILE);        // 下墙行以下
+  c.fillRect(0, B, doorPx, TILE);                   // 下墙行·门左
+  c.fillRect(doorPx + TILE, B, W - doorPx - TILE, TILE); // 下墙行·门右
   c.fillRect(0, 0, L, H);
   c.fillRect(R, 0, W - R, H);
 
@@ -505,11 +509,37 @@ function drawIndoorWalls(c: Ctx, scene: string) {
   c.fillStyle = 'rgba(0,0,0,.3)';
   c.fillRect(R + 7, T0, 3, B - T0);
 
-  // 5) 下墙沿（低矮）
+  // 5) 下墙：整一格高，门的位置留洞——门是「墙上的门」，不是「地板上的洞」
+  const doorX = r.door.tx * TILE;
+  const leftW = doorX - (L - 10);
+  const rightX = doorX + TILE;
+  const rightW = (R + 10) - rightX;
+
   c.fillStyle = '#3a2a1e';
-  c.fillRect(L - 10, B, R - L + 20, 12);
+  if (leftW > 0) c.fillRect(L - 10, B, leftW, TILE);
+  if (rightW > 0) c.fillRect(rightX, B, rightW, TILE);
+  // 墙顶高光 + 底部投影
   c.fillStyle = '#5a4230';
-  c.fillRect(L - 10, B, R - L + 20, 3);
+  if (leftW > 0) c.fillRect(L - 10, B, leftW, 3);
+  if (rightW > 0) c.fillRect(rightX, B, rightW, 3);
+  c.fillStyle = 'rgba(0,0,0,.28)';
+  if (leftW > 0) c.fillRect(L - 10, B + TILE - 4, leftW, 4);
+  if (rightW > 0) c.fillRect(rightX, B + TILE - 4, rightW, 4);
+
+  // 门框：把门嵌进墙里
+  c.fillStyle = '#241a14';
+  c.fillRect(doorX - 3, B - 2, TILE + 6, 4);          // 门楣
+  c.fillStyle = '#2e211a';
+  c.fillRect(doorX - 3, B, 3, TILE);                   // 左门框
+  c.fillRect(doorX + TILE, B, 3, TILE);                // 右门框
+  c.fillStyle = '#4a3527';
+  c.fillRect(doorX - 3, B - 2, TILE + 6, 1);
+
+  // 门槛：一小条浅色石阶，表示「从这里出去」
+  c.fillStyle = '#8a7a68';
+  c.fillRect(doorX + 1, B + TILE - 5, TILE - 2, 5);
+  c.fillStyle = 'rgba(255,240,210,.22)';
+  c.fillRect(doorX + 1, B + TILE - 5, TILE - 2, 1);
 }
 
 /** 室内的窗户天光：颜色随时间和天气变 */

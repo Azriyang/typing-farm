@@ -290,43 +290,43 @@ export function isShopScene(id: string): boolean {
 
 export const ROOMS: Record<IndoorScene, Room> = {
   house: {
-    x0: 17, y0: 6, x1: 32, y1: 16,
+    x0: 17, y0: 6, x1: 32, y1: 15,
     floor: T.FLOOR,
     door: { tx: 24, ty: 16 },
     spawn: { tx: 24, ty: 15, dir: 'up' }
   },
   coop: {
-    x0: 17, y0: 6, x1: 30, y1: 16,
+    x0: 17, y0: 6, x1: 30, y1: 15,
     floor: T.FLOOR_STONE,
     door: { tx: 23, ty: 16 },
     spawn: { tx: 23, ty: 15, dir: 'up' }
   },
   barn: {
-    x0: 15, y0: 5, x1: 34, y1: 17,
+    x0: 15, y0: 5, x1: 34, y1: 16,
     floor: T.FLOOR_STONE,
     door: { tx: 24, ty: 17 },
     spawn: { tx: 24, ty: 16, dir: 'up' }
   },
   tavern: {
-    x0: 16, y0: 6, x1: 31, y1: 16,
+    x0: 16, y0: 6, x1: 31, y1: 15,
     floor: T.FLOOR,
     door: { tx: 23, ty: 16 },
     spawn: { tx: 23, ty: 15, dir: 'up' }
   },
   smith: {
-    x0: 17, y0: 6, x1: 30, y1: 15,
+    x0: 17, y0: 6, x1: 30, y1: 14,
     floor: T.FLOOR_STONE,
     door: { tx: 23, ty: 15 },
     spawn: { tx: 23, ty: 14, dir: 'up' }
   },
   clinic: {
-    x0: 17, y0: 6, x1: 30, y1: 15,
+    x0: 17, y0: 6, x1: 30, y1: 14,
     floor: T.FLOOR_STONE,
     door: { tx: 23, ty: 15 },
     spawn: { tx: 23, ty: 14, dir: 'up' }
   },
   school: {
-    x0: 16, y0: 6, x1: 31, y1: 16,
+    x0: 16, y0: 6, x1: 31, y1: 15,
     floor: T.FLOOR,
     door: { tx: 23, ty: 16 },
     spawn: { tx: 23, ty: 15, dir: 'up' }

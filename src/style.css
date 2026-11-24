@@ -885,3 +885,19 @@ html, body {
 .diff-row .dr-main b { font-size: 14px; }
 .diff-row .dr-desc { font-size: 11.5px; color: var(--ink-soft); }
 .diff-row .dr-check { color: var(--green-dark); font-weight: 900; font-size: 15px; }
+/* ---- 内置词库（四级词汇） ---- */
+.builtin-set {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  margin: 10px 0 6px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 10px;
+}
+.builtin-set.on { border-color: #8fb0d8; background: #f2f7fd; }
+.builtin-set .bs-main { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.builtin-set .bs-main b { font-size: 13.5px; }
+.builtin-set .bs-meta { font-size: 11.5px; color: var(--ink-soft); }
+.words-list .wr-meta { font-size: 11.5px; }

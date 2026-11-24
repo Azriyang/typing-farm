@@ -45,7 +45,7 @@ import { getDef, pickFish, sellPrice, isSellable } from './items';
 import type { FishDef } from './items';
 import {
   makeWord, makeWords, bandForValue, getCustomSets, upsertCustom, removeCustom,
-  toggleCustom, normalizeWords, totalWords, CATEGORY_LABEL, BANDS, bandStats, distribution, difficulty
+  toggleCustom, normalizeEntries, totalWords, isCet4Enabled, setCet4Enabled, cet4Count, CATEGORY_LABEL, BANDS, bandStats, distribution, difficulty
 } from './words';
 import type { WordCategory, CustomSet } from './words';
 import type {
@@ -2079,7 +2079,7 @@ function renderWords(): void {
           <input id="ws-name" class="inp" maxlength="20" placeholder="词库名称" value="${editingSet.name.replace(/"/g, '&quot;')}">
           <select id="ws-bind" class="inp">${catOptions(editingSet.bind)}</select>
         </div>
-        <textarea id="ws-text" class="inp ta" rows="5" placeholder="一行一个词，或用空格/逗号分隔。只保留英文字母，长度 2~14。">${editingSet.words.join(' ')}</textarea>
+        <textarea id="ws-text" class="inp ta" rows="5" placeholder="每行一个：abandon 放弃&#10;也支持纯单词列表：abandon absorb abstract">${editingSet.words.map((w) => (w.zh ? `${w.en} ${w.zh}` : w.en)).join('\n')}</textarea>
         <div id="ws-preview" class="ws-preview dim"></div>
         <div class="wf-row right">
           <button class="btn tiny ghost" id="ws-cancel">取消</button>
@@ -2088,6 +2088,16 @@ function renderWords(): void {
       </div>`
     : `<div class="wf-row"><button class="btn small" id="ws-new">＋ 新建词库</button></div>`;
 
+  const cet4Row = `
+    <div class="builtin-set ${isCet4Enabled() ? 'on' : ''}">
+      <div class="bs-main">
+        <b>📘 四级词汇</b>
+        <span class="bs-meta">内置 ${cet4Count()} 词 · 带中文释义 · ${isCet4Enabled() ? '默认启用' : '已停用'}</span>
+      </div>
+      <button class="btn tiny ${isCet4Enabled() ? '' : 'ghost'}" id="cet4-toggle">${isCet4Enabled() ? '停用' : '启用'}</button>
+    </div>
+    <p class="dim cov-note">四级词汇启用时，所有动作都从它取词；停用后回到农场主题词（耕作/砍树/挖矿…）。自定义词库优先级最高。</p>`;
+
   UI.showModal(
     '词库',
     `<p class="dim">
@@ -2095,6 +2105,7 @@ function renderWords(): void {
        价值越高、词越难。难度不只看长度——重复字符、左右手交替都算在内。
      </p>
      <p class="dim">当前可用词数：${stats}</p>
+     ${cet4Row}
      ${coverage}
      ${listHtml}
      <h3>${editingSet ? '编辑 / 新建' : '新建'}</h3>
@@ -2114,7 +2125,7 @@ function renderWords(): void {
   const textEl = document.getElementById('ws-text') as HTMLTextAreaElement | null;
   const updatePreview = (): void => {
     if (!previewEl || !textEl) return;
-    const words = normalizeWords(textEl.value);
+    const words = normalizeEntries(textEl.value);
     if (words.length === 0) {
       previewEl.textContent = '输入单词后，这里会显示难度分布';
       return;
@@ -2128,6 +2139,11 @@ function renderWords(): void {
 
   document.getElementById('ws-new')?.addEventListener('click', () => {
     editingSet = { id: uid(), name: '', bind: 'all', words: [], enabled: true };
+    renderWords();
+  });
+
+  document.getElementById('cet4-toggle')?.addEventListener('click', () => {
+    setCet4Enabled(!isCet4Enabled());
     renderWords();
   });
 
@@ -2163,7 +2179,7 @@ function renderWords(): void {
     const bindEl = document.getElementById('ws-bind') as HTMLSelectElement | null;
     const textEl = document.getElementById('ws-text') as HTMLTextAreaElement | null;
     const name = (nameEl?.value ?? '').trim() || '未命名词库';
-    const words = normalizeWords(textEl?.value ?? '');
+    const words = normalizeEntries(textEl?.value ?? '');
     if (words.length === 0) {
       UI.toast('没有识别到有效的英文单词', 'bad');
       return;
@@ -2204,17 +2220,31 @@ function renderWords(): void {
       const arr = Array.isArray(data) ? data : [data];
       for (const s of arr) {
         if (!s || !Array.isArray(s.words)) continue;
+        // 兼容两种导入格式：字符串数组 / 带释义的条目数组
+        const text = s.words
+          .map((w: unknown) => {
+            if (typeof w === 'string') return w;
+            if (w && typeof w === 'object') {
+              const o = w as { en?: string; zh?: string };
+              return `${o.en ?? ''} ${o.zh ?? ''}`.trim();
+            }
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n');
+        const entries = normalizeEntries(text);
+        if (entries.length === 0) continue;
         upsertCustom({
           id: uid(),
           name: s.name || '导入的词库',
           bind: s.bind ?? 'all',
-          words: normalizeWords(s.words.join(' ')),
+          words: entries,
           enabled: true
         });
         imported++;
       }
     } catch {
-      const words = normalizeWords(raw);
+      const words = normalizeEntries(raw);
       if (words.length > 0) {
         upsertCustom({ id: uid(), name: '导入的词库', bind: 'all', words, enabled: true });
         imported = 1;

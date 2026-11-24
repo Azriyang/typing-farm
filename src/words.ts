@@ -11,6 +11,10 @@
 
 import type { Word } from './types';
 import { storage } from './platform';
+import { CET4_WORDS } from './cet4';
+import type { WordEntry } from './cet4';
+
+export type { WordEntry };
 
 export type WordCategory = 'farm' | 'chop' | 'mine' | 'cut' | 'fish' | 'animal';
 
@@ -218,30 +222,95 @@ const BUILT_IN: Record<WordCategory, string[]> = {
   ]
 };
 
+/* ---------------- 内置主题词库（CET-4） ---------------- */
+
+const CET4_KEY = 'typing-farm-cet4-v1';
+/** 默认启用四级词汇 */
+let cet4Enabled = true;
+
+function loadCet4Flag(): void {
+  try {
+    const v = storage.get(CET4_KEY);
+    if (v === '0') cet4Enabled = false;
+    else if (v === '1') cet4Enabled = true;
+  } catch {
+    /* 忽略 */
+  }
+}
+loadCet4Flag();
+
+export function isCet4Enabled(): boolean {
+  return cet4Enabled;
+}
+
+export function setCet4Enabled(on: boolean): void {
+  cet4Enabled = on;
+  libraryVersion++;
+  storage.set(CET4_KEY, on ? '1' : '0');
+}
+
+export function cet4Count(): number {
+  return CET4_WORDS.length;
+}
+
 /* ---------------- 自定义词库 ---------------- */
 
 export interface CustomSet {
   id: string;
   name: string;
   bind: 'all' | WordCategory;
-  words: string[];
+  /** 统一用带释义的条目 */
+  words: WordEntry[];
   enabled: boolean;
 }
 
-const CUSTOM_KEY = 'typing-farm-wordsets-v1';
+const CUSTOM_KEY = 'typing-farm-wordsets-v2';
+const CUSTOM_KEY_LEGACY = 'typing-farm-wordsets-v1';
 
 let customSets: CustomSet[] = [];
 /** 词库变更计数：洗牌袋据此失效重建 */
 let libraryVersion = 0;
 
+/** 把旧格式（纯字符串数组）统一成 WordEntry[] */
+function toEntries(raw: unknown): WordEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WordEntry[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    let en = '';
+    let zh = '';
+    if (typeof item === 'string') {
+      en = item;
+    } else if (item && typeof item === 'object') {
+      const o = item as Partial<WordEntry>;
+      en = typeof o.en === 'string' ? o.en : '';
+      zh = typeof o.zh === 'string' ? o.zh : '';
+    }
+    en = en.trim().toLowerCase().replace(/[^a-z]/g, '');
+    if (en.length < 2 || en.length > 14) continue;
+    if (seen.has(en)) continue;
+    seen.add(en);
+    out.push({ en, zh: zh.trim() });
+  }
+  return out;
+}
+
 function loadCustom(): void {
   try {
-    const raw = storage.get(CUSTOM_KEY);
+    const raw = storage.get(CUSTOM_KEY) ?? storage.get(CUSTOM_KEY_LEGACY);
     if (!raw) return;
-    const data = JSON.parse(raw) as CustomSet[];
-    if (Array.isArray(data)) {
-      customSets = data.filter((s) => s && typeof s.id === 'string' && Array.isArray(s.words));
-    }
+    const data = JSON.parse(raw) as Array<Partial<CustomSet> & { words: unknown }>;
+    if (!Array.isArray(data)) return;
+    customSets = data
+      .filter((s) => s && typeof s.id === 'string')
+      .map((s) => ({
+        id: s.id as string,
+        name: s.name ?? '未命名词库',
+        bind: (s.bind ?? 'all') as CustomSet['bind'],
+        enabled: s.enabled !== false,
+        words: toEntries(s.words)
+      }))
+      .filter((s) => s.words.length > 0);
   } catch {
     customSets = [];
   }
@@ -282,13 +351,50 @@ export function toggleCustom(id: string): void {
   persistCustom();
 }
 
-/** 清洗用户输入：只留小写字母，长度 2~14，去重 */
+/**
+ * 解析用户输入。支持两种写法：
+ *   1. 带释义：`abandon 放弃` / `abandon,放弃` / `abandon 放弃一`（一行一个）
+ *   2. 纯单词：`abandon absorb abstract`（空格/逗号分隔，无释义）
+ * 也允许一行里用分号分隔多个条目。
+ */
+export function normalizeEntries(text: string): WordEntry[] {
+  const out: WordEntry[] = [];
+  const seen = new Set<string>();
+
+  const push = (en: string, zh: string): void => {
+    const w = en.trim().toLowerCase().replace(/[^a-z]/g, '');
+    if (w.length < 2 || w.length > 14) return;
+    if (seen.has(w)) return;
+    seen.add(w);
+    out.push({ en: w, zh: zh.trim() });
+  };
+
+  for (const rawLine of text.split(/[\n\r;；]+/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // 尝试「一个英文词 + 解说」的形式
+    const m = line.match(/^([A-Za-z]{2,14})[\s,，:：\-—]+(.+)$/);
+    if (m) {
+      // 解说里如果还夹着别的英文词，说明是纯单词列表，走下面的分支
+      const rest = m[2];
+      if (!/[A-Za-z]{2,}/.test(rest)) {
+        push(m[1], rest);
+        continue;
+      }
+    }
+
+    // 纯单词列表
+    for (const part of line.split(/[\s,，、]+/)) {
+      if (/[A-Za-z]/.test(part)) push(part, '');
+    }
+  }
+  return out;
+}
+
+/** 兼容旧接口：只取英文词 */
 export function normalizeWords(text: string): string[] {
-  const raw = text
-    .split(/[\s,，、;；\n\r]+/)
-    .map((w) => w.trim().toLowerCase().replace(/[^a-z]/g, ''))
-    .filter((w) => w.length >= 2 && w.length <= 14);
-  return [...new Set(raw)];
+  return normalizeEntries(text).map((e) => e.en);
 }
 
 /* ---------------- 候选词 ---------------- */
@@ -303,26 +409,40 @@ function hasCustom(cat: WordCategory): boolean {
   return customSets.some((s) => s.enabled && s.words.length > 0 && (s.bind === 'all' || s.bind === cat));
 }
 
-function customFor(cat: WordCategory, band: Band): string[] {
-  const out: string[] = [];
+function customFor(cat: WordCategory, band: Band): WordEntry[] {
+  const out: WordEntry[] = [];
   for (const set of customSets) {
     if (!set.enabled) continue;
     if (set.bind !== 'all' && set.bind !== cat) continue;
-    for (const w of set.words) if (inBand(w, band)) out.push(w);
+    for (const w of set.words) if (inBand(w.en, band)) out.push(w);
   }
   return out;
 }
 
-function builtInFor(cat: WordCategory, band: Band): string[] {
-  return BUILT_IN[cat].filter((w) => inBand(w, band));
+/** 农场主题词（内置，自带分类） */
+function builtInFor(cat: WordCategory, band: Band): WordEntry[] {
+  return BUILT_IN[cat]
+    .filter((w) => inBand(w, band))
+    .map((w) => ({ en: w, zh: WORD_ZH[w] ?? '' }));
+}
+
+/** 四级词汇（内置，不限分类） */
+function cet4For(band: Band): WordEntry[] {
+  return CET4_WORDS.filter((w) => inBand(w.en, band));
 }
 
 /**
- * 取候选词。
- * 一旦有启用的自定义词库绑定到该类别，就**只用自定义词**，内置词不再掺进来。
+ * 取候选词，优先级：
+ * 1. 用户启用且绑定该分类的自定义词库
+ * 2. 启用的四级词汇（默认开启）
+ * 3. 农场主题词（内置分类词）
  */
-function candidates(cat: WordCategory, band: Band): string[] {
+function candidates(cat: WordCategory, band: Band): WordEntry[] {
   if (hasCustom(cat)) return customFor(cat, band);
+  if (cet4Enabled) {
+    const list = cet4For(band);
+    if (list.length > 0) return list;
+  }
   return builtInFor(cat, band);
 }
 
@@ -330,7 +450,7 @@ function candidates(cat: WordCategory, band: Band): string[] {
 
 interface Bag {
   version: number;
-  words: string[];
+  words: WordEntry[];
 }
 
 const bags = new Map<string, Bag>();
@@ -348,7 +468,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /** 从某档的洗牌袋里取一个词；袋空了才重洗，保证一轮内不重复 */
-function drawFromBag(cat: WordCategory, bandIndex: number, list: string[]): string {
+function drawFromBag(cat: WordCategory, bandIndex: number, list: WordEntry[]): WordEntry {
   const key = `${cat}:${bandIndex}`;
   let bag = bags.get(key);
   if (!bag || bag.version !== libraryVersion || bag.words.length === 0) {
@@ -357,17 +477,17 @@ function drawFromBag(cat: WordCategory, bandIndex: number, list: string[]): stri
   }
 
   // 优先取不在近期记录里的词
-  let idx = bag.words.findIndex((w) => !recent.includes(w));
+  let idx = bag.words.findIndex((w) => !recent.includes(w.en));
   if (idx < 0) idx = 0;
-  const word = bag.words.splice(idx, 1)[0];
+  const entry = bag.words.splice(idx, 1)[0];
 
-  recent.push(word);
+  recent.push(entry.en);
   if (recent.length > RECENT_MAX) recent.shift();
-  return word;
+  return entry;
 }
 
-/** 按类别与难度取一个词；该档没词就向邻近档借 */
-export function pickWord(cat: WordCategory, bandIndex: number): string {
+/** 按类别与难度取一个词条；该档没词就向邻近档借 */
+export function pickEntry(cat: WordCategory, bandIndex: number): WordEntry {
   const b = Math.max(0, Math.min(BANDS.length - 1, bandIndex));
 
   for (let spread = 0; spread < BANDS.length; spread++) {
@@ -382,14 +502,20 @@ export function pickWord(cat: WordCategory, bandIndex: number): string {
   // 兜底：该类别任何可用词
   const all = candidates(cat, { min: 0, max: 999, label: '' });
   if (all.length > 0) return drawFromBag(cat, -1, all);
-  return 'farm';
+  return { en: 'farm', zh: '农场' };
+}
+
+/** 兼容旧接口：只要英文词 */
+export function pickWord(cat: WordCategory, bandIndex: number): string {
+  return pickEntry(cat, bandIndex).en;
 }
 
 /** 取一个带中文提示与难度分的 Word */
 export function makeWord(cat: WordCategory, bandIndex: number, zh: string): Word {
-  const text = pickWord(cat, bandIndex);
-  // 优先用词本身的释义；没有收录才退回动作名
-  return { text, zh: WORD_ZH[text] ?? zh, diff: difficulty(text) };
+  const entry = pickEntry(cat, bandIndex);
+  // 优先用词条自带的释义，其次查内置词义表，最后退回动作名
+  const meaning = entry.zh || WORD_ZH[entry.en] || zh;
+  return { text: entry.en, zh: meaning, diff: difficulty(entry.en) };
 }
 
 /** 取 n 个词（洗牌袋保证不重复） */
@@ -407,14 +533,15 @@ export function bandStats(cat: WordCategory): number[] {
 }
 
 export function totalWords(cat: WordCategory): number {
-  return new Set(candidates(cat, { min: 0, max: 999, label: '' })).size;
+  return new Set(candidates(cat, { min: 0, max: 999, label: '' }).map((e) => e.en)).size;
 }
 
 /** 一组词落在各难度档的数量（保存自定义词库前的分布预览） */
-export function distribution(words: string[]): number[] {
+export function distribution(words: Array<string | WordEntry>): number[] {
   const out = BANDS.map(() => 0);
   for (const w of words) {
-    const s = difficulty(w);
+    const en = typeof w === 'string' ? w : w.en;
+    const s = difficulty(en);
     const i = BANDS.findIndex((b) => s >= b.min && s < b.max);
     if (i >= 0) out[i]++;
   }

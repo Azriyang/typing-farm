@@ -27,10 +27,10 @@ export interface Spot {
 
 /** 全天可去的地点表 */
 export const SPOTS = {
-  /** 农田东侧，阿茂守着地 */
-  farmEdge: { tx: 20, ty: 13, radius: 2.5 },
-  /** 池塘边，小渔钓鱼 */
-  pondBank: { tx: 19, ty: 17, radius: 1.8 },
+  /** 小镇西口的自家菜地，阿茂在这儿忙 */
+  farmEdge: { tx: 35, ty: 11, radius: 2 },
+  /** 小镇河边，小渔钓鱼 */
+  pondBank: { tx: 48, ty: 18, radius: 1.6 },
   /** 小镇广场 */
   plaza: { tx: 52, ty: 11, radius: 3 },
   /** 酒馆门口 */
@@ -54,9 +54,9 @@ export const SPOTS = {
 /** 按季节变化的「花最多的地方」——阿晴会追着花走 */
 export function flowerSpot(season: Season): Spot {
   switch (season) {
-    case 'spring': return { tx: 9, ty: 13, radius: 1.8 };   // 农场的花丛
-    case 'summer': return { tx: 17, ty: 6, radius: 1.5 };
-    case 'autumn': return { tx: 63, ty: 11, radius: 1.8 };
+    case 'spring': return { tx: 36, ty: 10, radius: 1.6 };   // 镇西花圃
+    case 'summer': return { tx: 60, ty: 10, radius: 1.5 };   // 广场东侧
+    case 'autumn': return { tx: 63, ty: 12, radius: 1.8 };
     default: return SPOTS.townGate;                          // 冬天没花，去镇口
   }
 }
@@ -136,9 +136,9 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
       dislike: ['唉，我这把年纪可弄不来这个。', '这…我留着也没用啊。', '鱼腥味…我可不碰。']
     },
     schedule: [
-      { from: 360, to: 720, spot: SPOTS.farmEdge, doing: '看庄稼' },
+      { from: 360, to: 720, spot: SPOTS.farmEdge, doing: '锄自己的小菜地' },
       { from: 720, to: 840, spot: SPOTS.plaza, doing: '吃午饭' },
-      { from: 840, to: 1080, spot: SPOTS.farmEdge, doing: '翻地' },
+      { from: 840, to: 1080, spot: SPOTS.farmEdge, doing: '翻土' },
       { from: 1080, to: 1320, spot: SPOTS.plaza, doing: '和人聊天' }
     ],
     phrases: [
@@ -163,7 +163,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     },
     schedule: [
       { from: 360, to: 1320, spot: SPOTS.underRoof, onlyWeather: 'rain', doing: '避雨' },
-      { from: 360, to: 1120, spot: SPOTS.pondBank, doing: '钓鱼' },
+      { from: 360, to: 1120, spot: SPOTS.pondBank, doing: '在河边钓鱼' },
       { from: 1120, to: 1320, spot: SPOTS.plaza, doing: '收拾渔具' }
     ],
     phrases: [

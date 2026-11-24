@@ -134,32 +134,38 @@ export function indoorAnimalPos(scene: 'coop' | 'barn', index: number): { x: num
 }
 
 /** 耕地区域：第 0 块初始就有，第 1 块要花钱买 */
+/**
+ * 农场耕地：四块，从中央向两侧扩。
+ * 参考牧场物语——整片地一开始就看得见，但工具和体力只够开垦一小角。
+ */
 export const FARM_AREAS = [
-  { x: 11, y: 9, cols: 6, rows: 4 },
-  { x: 17, y: 9, cols: 3, rows: 4 }
+  { x: 5, y: 9, cols: 14, rows: 5 },    // 70 格（初始免费）
+  { x: 21, y: 9, cols: 11, rows: 5 },   // 55 格（2500G）
+  { x: 5, y: 15, cols: 14, rows: 2 },   // 28 格（8000G）
+  { x: 21, y: 15, cols: 11, rows: 2 }   // 22 格（16000G）
 ] as const;
 
 /** 从第几块起需要购买解锁 */
-export const AREA_UNLOCK_COST = [0, 2500];
+export const AREA_UNLOCK_COST = [0, 2500, 8000, 16000];
 
 /** 兼容旧代码：第一块耕地 */
 export const FARM = FARM_AREAS[0];
 
 /** 可砍伐的树（动态节点） */
 export const TREE_SPOTS: Array<[number, number]> = [
-  [20, 3], [21, 3], [20, 4], [26, 5], [27, 6], [2, 11],
-  [2, 13], [18, 4], [19, 12], [22, 6], [25, 10], [21, 12]
+  [12, 4], [13, 4], [19, 3], [26, 4], [29, 6], [2, 4],
+  [2, 12], [19, 12], [20, 14], [30, 8], [31, 14], [19, 20]
 ];
 
 /** 可开采的岩石（动态节点）；原 y8 的四块让位给进镇道路，移到镇西石堆 */
 export const ROCK_SPOTS: Array<[number, number]> = [
-  [30, 12], [31, 12], [24, 11], [26, 3], [30, 13], [31, 13], [20, 10], [9, 12]
+  [19, 6], [20, 6], [30, 3], [31, 4], [19, 17], [20, 17], [26, 3], [2, 8]
 ];
 
 /** 鸡舍 / 牛棚（实心，挡路） */
 export const BUILDINGS = {
-  coop: { x: 3, y: 14, w: 3, h: 2 },
-  barn: { x: 11, y: 14, w: 4, h: 2 }
+  coop: { x: 3, y: 18, w: 3, h: 2 },
+  barn: { x: 8, y: 18, w: 4, h: 2 }
 } as const;
 
 /** 小镇建筑（实心，挡路）；kind 用于渲染配色与交互 */
@@ -223,8 +229,8 @@ export function inTownArea(tx: number): boolean {
 
 /** 围栏活动区（可走入，动物在其中游走） */
 export const PENS = {
-  chicken: { x0: 3, y0: 16, x1: 8, y1: 19 },
-  cow: { x0: 11, y0: 16, x1: 16, y1: 19 }
+  chicken: { x0: 2, y0: 18, x1: 7, y1: 20 },
+  cow: { x0: 8, y0: 18, x1: 16, y1: 20 }
 } as const;
 
 /** 是否落在畜栏 / 棚舍区域（用于排除杂草生成等） */
@@ -352,8 +358,8 @@ export const ROOMS: Record<IndoorScene, Room> = {
 /** 农场里三个建筑的门位置（用于从室内走回农场时定位置） */
 export const FARM_DOORS: Record<'house' | 'coop' | 'barn' | 'mine', { tx: number; ty: number }> = {
   house: { tx: 5, ty: 6 },
-  coop: { tx: 4, ty: 15 },
-  barn: { tx: 12, ty: 15 },
+  coop: { tx: 4, ty: 19 },
+  barn: { tx: 9, ty: 19 },
   mine: { tx: 13, ty: 3 }
 };
 
@@ -466,8 +472,14 @@ function buildFarmTerrain(): void {
     }
   }
 
+  // 农场与小镇的分界树篱：只留主街一个口
+  for (let y = 2; y < MAP_H - 1; y++) {
+    if (y === 7 || y === 8) continue;
+    if (noise(31, y) > 0.18) set(32, y, T.TREE);
+  }
+
   // 池塘
-  const pcx = 23, pcy = 16, prx = 4.2, pry = 2.8;
+  const pcx = 26, pcy = 19, prx = 3.6, pry = 1.9;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const dx = (x - pcx) / prx;
@@ -494,6 +506,16 @@ function buildFarmTerrain(): void {
 
   // 农田（只铺第一块；第二块买地后由 unlockArea 铺上）
   setRect(FARM_AREAS[0].x, FARM_AREAS[0].y, FARM_AREAS[0].cols, FARM_AREAS[0].rows, T.SOIL);
+
+  // 小镇南边的河：横贯全镇，小渔在这儿钓鱼
+  for (let x = 33; x < MAP_W - 1; x++) {
+    set(x, 19, T.WATER);
+    set(x, 20, T.WATER);
+  }
+  // 河岸（可走的石滩）
+  for (let x = 33; x < MAP_W - 1; x++) {
+    if (tileAt(x, 18) === T.GRASS) set(x, 18, T.PATH);
+  }
 
   // 小镇中央广场（不规则：中间宽、两端窄）
   setRect(47, 10, 11, 3, T.PATH);

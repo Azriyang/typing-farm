@@ -525,6 +525,30 @@ function drawFurniture(c: Ctx, scene: string) {
         c.fillRect(x + 1, y + h - 6, w - 2, 4);
         break;
       }
+      case 'chest': {
+        // 旧木箱：带铜扣的深色木箱
+        c.fillStyle = '#4a3018';
+        c.fillRect(x + 2, y + 10, w - 4, h - 12);
+        c.fillStyle = '#6b4a2e';
+        c.fillRect(x + 4, y + 12, w - 8, h - 16);
+        // 箱盖
+        c.fillStyle = '#7d5738';
+        c.fillRect(x + 3, y + 6, w - 6, 8);
+        c.fillStyle = '#8f6544';
+        c.fillRect(x + 3, y + 6, w - 6, 2);
+        // 木纹
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 4, y + 16, w - 8, 1);
+        c.fillRect(x + 4, y + 22, w - 8, 1);
+        // 铜扣
+        c.fillStyle = '#c9a44e';
+        c.fillRect(x + w / 2 - 4, y + 11, 8, 7);
+        c.fillStyle = '#e8c86a';
+        c.fillRect(x + w / 2 - 4, y + 11, 8, 2);
+        c.fillStyle = '#8a6a2e';
+        c.fillRect(x + w / 2 - 1, y + 14, 2, 3);
+        break;
+      }
       case 'stove': {
         // 灶台：石砌灶身 + 铁锅 + 火光
         c.fillStyle = '#5a5450';

@@ -277,6 +277,8 @@ export interface GameState {
   crafting?: CraftingJob | null;
   /** 当前可接的委托 */
   requests?: Request[];
+  /** 已经看过的爷爷遗物 id */
+  relics?: string[];
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

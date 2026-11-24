@@ -35,6 +35,7 @@ import {
 } from './cook';
 import { findPath, nearestWalkable, simplifyPath } from './pathfind';
 import { rollRequests } from './requests';
+import { RELICS, relicById, newlyUnlocked } from './relics';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
@@ -391,6 +392,8 @@ function normalizeState(s: GameState): void {
   if (s.crafting === undefined) s.crafting = null;
   // 旧档没有委托
   if (!Array.isArray(s.requests)) s.requests = [];
+  // 旧档没有遗物记录
+  if (!Array.isArray(s.relics)) s.relics = [];
 }
 
 function newState(): GameState {
@@ -438,6 +441,7 @@ function newState(): GameState {
     scene: 'farm',
     difficulty: 'normal',
     requests: [],
+    relics: [],
     autoSwitch: true,
     todayCleared: 0
   };
@@ -1463,6 +1467,60 @@ function fulfillRequest(id: string): void {
   openBoard();
 }
 
+/* ---------------- 旧木箱（爷爷的遗物） ---------------- */
+
+function openRelics(): void {
+  const known = state.relics ?? [];
+  const items = RELICS.map((r) => {
+    const unlocked = state.day >= r.unlockDay;
+    if (!unlocked) {
+      return `<div class="relic-row locked">
+        <span class="rl-ico">🔒</span>
+        <span class="rl-main"><b>？？？</b><span class="rl-sub">还要等到第 ${r.unlockDay} 天</span></span>
+      </div>`;
+    }
+    const isNew = !known.includes(r.id);
+    return `<div class="relic-row${isNew ? ' fresh' : ''}" data-relic="${r.id}">
+      <span class="rl-ico">${r.icon}</span>
+      <span class="rl-main"><b>${r.name}</b><span class="rl-sub">${isNew ? '· 还没看过' : '· 再看一遍'}</span></span>
+    </div>`;
+  }).join('');
+
+  UI.showModal(
+    '旧木箱',
+    `<p class="dim">箱子是老木头的，边角磨得发亮。里面放着爷爷留下的东西。</p>
+     <div class="relic-list">${items}</div>`,
+    [{ label: '合上', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-relic]').forEach((el) => {
+    el.addEventListener('click', () => showRelic(el.dataset.relic as string));
+  });
+}
+
+function showRelic(id: string): void {
+  const r = relicById(id);
+  if (!r) return;
+  // 看过了就记下来（只用于标记"还没看过"）
+  if (!state.relics?.includes(id)) {
+    state.relics = [...(state.relics ?? []), id];
+    save();
+  }
+
+  const body = r.lines
+    .map((line) => (line === '' ? '<p class="relic-gap"></p>' : `<p class="relic-line">${line}</p>`))
+    .join('');
+
+  UI.showModal(
+    `${r.icon} ${r.name}`,
+    `<div class="relic-text">${body}</div>`,
+    [
+      { label: '放回去', cls: 'ghost', onClick: () => openRelics() },
+      { label: '合上', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -1477,6 +1535,7 @@ function tryInteract(): void {
   if (tgt?.kind === 'shelf') { openDex(); return; }
   if (tgt?.kind === 'bench') { openCraftPanel(); return; }
   if (tgt?.kind === 'stove') { openCookPanel(); return; }
+  if (tgt?.kind === 'chest') { openRelics(); return; }
 
   // 优先：面朝的村民（只在农场有村民）
   if (!isIndoor(state.scene)) {
@@ -2826,6 +2885,11 @@ function sleep(fainted = false): void {
   startLearnDay(state.day);
   // 每天刷新委托（过期的撤下，补足到 2~3 条）
   state.requests = rollRequests(state.requests ?? [], state.day);
+  // 有遗物刚好到了解锁日？提示一下
+  const newRelic = newlyUnlocked(state.day, state.relics ?? []);
+  if (newRelic) {
+    window.setTimeout(() => UI.toast(`${newRelic.icon} 旧木箱里好像多了件东西…`, 'good'), 900);
+  }
   state.stats.daysPlayed++;
   state.time = CFG.DAY_START;
   state.stamina = CFG.STAMINA_MAX;

@@ -206,6 +206,17 @@ export interface Player {
   path?: Array<{ tx: number; ty: number }> | null;
 }
 
+export interface Request {
+  id: string;
+  giver: string;
+  itemId: string;
+  qty: number;
+  reward: number;
+  friendship: number;
+  day: number;
+  expireDay: number;
+}
+
 export interface Stats {
   harvested: number;
   sold: number;
@@ -264,6 +275,8 @@ export interface GameState {
   difficulty: 'easy' | 'normal' | 'hard';
   /** 加工台当前在做的活；null 表示空闲 */
   crafting?: CraftingJob | null;
+  /** 当前可接的委托 */
+  requests?: Request[];
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

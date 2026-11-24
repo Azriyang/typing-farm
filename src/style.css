@@ -989,3 +989,28 @@ html, body {
 .cook-row .nm { font-size: 13px; font-weight: 700; }
 .cook-row .dt { font-size: 11.5px; color: var(--ink-soft); }
 .cook-row .heal { color: #c9563f; }
+/* ---- 委托板 ---- */
+.req-list { display: flex; flex-direction: column; gap: 7px; }
+.req-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 9px;
+}
+.req-row.cant { opacity: .62; }
+.req-row .rq-main { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.req-row .nm { font-size: 13px; font-weight: 700; }
+.req-row .dt { font-size: 11.5px; color: var(--ink-soft); }
+.req-row .rq-gold { color: #b8860b; }
+.req-row .rq-urgent {
+  margin-left: 5px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  background: #c9563f;
+  border-radius: 4px;
+}

@@ -34,6 +34,7 @@ import {
   inputValue, TIER_LABEL
 } from './cook';
 import { findPath, nearestWalkable, simplifyPath } from './pathfind';
+import { rollRequests } from './requests';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
@@ -388,6 +389,8 @@ function normalizeState(s: GameState): void {
   if (s.difficulty !== 'easy' && s.difficulty !== 'hard') s.difficulty = 'normal';
   // 旧档没有加工台字段
   if (s.crafting === undefined) s.crafting = null;
+  // 旧档没有委托
+  if (!Array.isArray(s.requests)) s.requests = [];
 }
 
 function newState(): GameState {
@@ -434,6 +437,7 @@ function newState(): GameState {
     farmUnlocked: 1,
     scene: 'farm',
     difficulty: 'normal',
+    requests: [],
     autoSwitch: true,
     todayCleared: 0
   };
@@ -1389,6 +1393,76 @@ function eatFood(bagIndex: number): void {
   openCookPanel();
 }
 
+/* ---------------- 委托板 ---------------- */
+
+function openBoard(): void {
+  const list = state.requests ?? [];
+  if (list.length === 0) {
+    UI.showModal('委托板', '<p class="dim">今天没有新的委托。明天再来看看。</p>',
+      [{ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }]);
+    return;
+  }
+
+  const rows = list.map((r) => {
+    const def = getDef(r.itemId);
+    const have = bagCount(r.itemId);
+    const can = have >= r.qty;
+    const giver = VILLAGER_DEFS[r.giver];
+    const urgent = r.expireDay <= state.day;
+    return `<div class="req-row${can ? '' : ' cant'}">
+      <div class="rq-main">
+        <div class="nm">${def?.icon ?? '📦'} ${def?.name ?? r.itemId} <span class="dm">×${r.qty}</span>
+          ${urgent ? '<span class="rq-urgent">今天截止</span>' : ''}</div>
+        <div class="dt">${giver?.icon ?? ''} ${giver?.name ?? '镇民'} 的委托 · 持有 ${have}/${r.qty}</div>
+        <div class="dt">报酬 <b class="rq-gold">${r.reward}G</b> · 好感 +${r.friendship}</div>
+      </div>
+      <button class="btn small ${can ? 'green' : 'ghost'}" data-fulfill="${r.id}" ${can ? '' : 'disabled'}>
+        ${can ? '交付' : '缺货'}
+      </button>
+    </div>`;
+  }).join('');
+
+  const total = list.reduce((s, r) => s + r.reward, 0);
+  UI.showModal(
+    '委托板',
+    `<p class="dim">镇上的人有事想请你帮忙。有货就能直接交，报酬比直接卖划算。</p>
+     <div class="req-list">${rows}</div>
+     <p class="dim cov-note">全部交付可得 ${total}G。委托保留 2 天，过期就撤下了。</p>`,
+    [{ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-fulfill]').forEach((el) => {
+    el.addEventListener('click', () => fulfillRequest(el.dataset.fulfill as string));
+  });
+}
+
+function fulfillRequest(id: string): void {
+  const list = state.requests ?? [];
+  const r = list.find((x) => x.id === id);
+  if (!r) return;
+
+  if (bagCount(r.itemId) < r.qty) {
+    UI.toast('东西不够', 'bad');
+    return;
+  }
+
+  const v = state.villagers.find((x) => x.id === r.giver);
+  const def = getDef(r.itemId);
+
+  Bag.removeFromBag(state.bag, r.itemId, r.qty);
+  state.coins += r.reward;
+  if (v) addFriendship(v, r.friendship);
+
+  state.requests = list.filter((x) => x.id !== id);
+  state.stats.actions++;
+
+  Sound.play('levelup');
+  UI.toast(`交付 ${def?.name ?? ''}×${r.qty}，得 ${r.reward}G`, 'good');
+  UI.resetHotbarCache();
+  save();
+  openBoard();
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -1418,6 +1492,7 @@ function tryInteract(): void {
   if (!info) return;
 
   if (info.kind === 'bin') { openBin(); return; }
+  if (info.kind === 'board') { openBoard(); return; }
   if (info.kind === 'order') { openShop(); return; }
   if (info.kind === 'locked') {
     UI.toast('这块地还没开垦，去订购箱买地', 'bad');
@@ -2738,6 +2813,8 @@ function sleep(fainted = false): void {
 
   state.day++;
   startLearnDay(state.day);
+  // 每天刷新委托（过期的撤下，补足到 2~3 条）
+  state.requests = rollRequests(state.requests ?? [], state.day);
   state.stats.daysPlayed++;
   state.time = CFG.DAY_START;
   state.stamina = CFG.STAMINA_MAX;
@@ -3123,6 +3200,10 @@ function startGame(fresh: boolean): void {
   chosenDifficulty = state.difficulty;
   // 初始化学习进度到当前日期（每日新词配额按天重置）
   startLearnDay(state.day);
+  // 开局或读档时补一次委托
+  if (!state.requests || state.requests.length === 0) {
+    state.requests = rollRequests(state.requests ?? [], state.day);
+  }
   restoreScene();
   running = true;
   UI.hideHint();

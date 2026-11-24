@@ -1460,7 +1460,7 @@ function drawWaterShimmer(c: Ctx, nowMs: number) {
 
 /* ---------------- 物体 ---------------- */
 
-function drawObject(c: Ctx, kind: 'bin' | 'order' | 'store', x: number, y: number, nowMs: number) {
+function drawObject(c: Ctx, kind: 'bin' | 'order' | 'store' | 'board', x: number, y: number, nowMs: number) {
   c.fillStyle = 'rgba(60,40,20,.22)';
   c.beginPath();
   c.ellipse(x + TILE / 2, y + TILE - 6, 20, 6, 0, 0, Math.PI * 2);
@@ -1507,6 +1507,33 @@ function drawObject(c: Ctx, kind: 'bin' | 'order' | 'store', x: number, y: numbe
     c.fillStyle = '#d9534f';
     c.fillRect(x + TILE - 12, y + 2, 3, 14);
     c.fillRect(x + TILE - 9 + wave, y + 3, 9, 6);
+  } else if (kind === 'board') {
+    // 委托板：木牌 + 贴着的几张小纸条
+    // 两根立柱
+    c.fillStyle = '#5a3c22';
+    c.fillRect(x + 10, y + 16, 5, TILE - 20);
+    c.fillRect(x + TILE - 15, y + 16, 5, TILE - 20);
+    // 板面
+    c.fillStyle = '#6b4a2e';
+    c.fillRect(x + 5, y + 8, TILE - 10, 26);
+    c.fillStyle = '#a97c4f';
+    c.fillRect(x + 7, y + 10, TILE - 14, 22);
+    c.fillStyle = '#c1966a';
+    c.fillRect(x + 7, y + 10, TILE - 14, 2);
+    // 纸条
+    c.fillStyle = '#f7f0dc';
+    c.fillRect(x + 11, y + 13, 10, 7);
+    c.fillRect(x + 24, y + 13, 9, 7);
+    c.fillRect(x + 11, y + 22, 13, 6);
+    c.fillStyle = '#c9bda0';
+    c.fillRect(x + 12, y + 15, 8, 1);
+    c.fillRect(x + 12, y + 17, 6, 1);
+    c.fillRect(x + 25, y + 15, 7, 1);
+    c.fillRect(x + 12, y + 24, 11, 1);
+    // 顶部小钉
+    c.fillStyle = '#8a8a8a';
+    c.fillRect(x + 11, y + 11, 2, 2);
+    c.fillRect(x + 24, y + 11, 2, 2);
   } else {
     // 杂货店门口：货摊 + 遮阳棚
     c.fillStyle = '#a9743f';

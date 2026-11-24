@@ -168,7 +168,7 @@ export function inAnimalArea(tx: number, ty: number): boolean {
   return false;
 }
 
-export type ObjectKind = 'bin' | 'order' | 'store';
+export type ObjectKind = 'bin' | 'order' | 'store' | 'board';
 
 export interface WorldObject {
   kind: ObjectKind;
@@ -180,7 +180,8 @@ export interface WorldObject {
 export const OBJECTS: WorldObject[] = [
   { kind: 'bin', tx: 18, ty: 8, label: '出货箱' },
   { kind: 'order', tx: 10, ty: 5, label: '订购箱' },
-  { kind: 'store', tx: 35, ty: 5, label: '杂货店' }
+  { kind: 'store', tx: 35, ty: 5, label: '杂货店' },
+  { kind: 'board', tx: 37, ty: 10, label: '委托板' }
 ];
 
 const terrain = new Uint8Array(MAP_W * MAP_H);

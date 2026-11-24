@@ -6,10 +6,10 @@ import { CROPS } from './config';
 import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
   plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS,
-  areaUnlocked, plotAreaOf
+  areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos
 } from './world';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
-import { animalNear, ANIMAL_DEFS, isProductReady } from './animals';
+import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
 import { villagerNear, VILLAGER_DEFS } from './villagers';
 import { TOOLS } from './tools';
 import { PALETTES } from './seasons';
@@ -106,16 +106,22 @@ export function applySeason(season: Season): void {
 /* ---------------- 底图（静态地形） ---------------- */
 
 function drawBaseTerrain(c: Ctx) {
+  const scene = getScene();
   for (let ty = 0; ty < MAP_H; ty++) {
     for (let tx = 0; tx < MAP_W; tx++) {
       drawTile(c, tx, ty, tileAt(tx, ty));
     }
   }
-  drawHouse(c);
-  drawPens(c);
-  drawCoop(c);
-  drawBarn(c);
-  drawTownBuildings(c);
+  if (scene === 'farm') {
+    drawHouse(c);
+    drawPens(c);
+    drawCoop(c);
+    drawBarn(c);
+    drawTownBuildings(c);
+  } else {
+    drawIndoorLighting(c, scene);
+    drawFurniture(c, scene);
+  }
 }
 
 function drawTile(c: Ctx, tx: number, ty: number, t: number) {
@@ -232,8 +238,7 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
     }
     case T.WALL:
     case T.ROOF:
-    case T.DOOR:
-      // 由 drawHouse 统一绘制
+      // 由 drawHouse / drawCoop / drawBarn 统一绘制
       c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
       break;
@@ -243,10 +248,217 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
       drawTree(c, x + TILE / 2, y + TILE - 6, 1 + r * 0.12);
       break;
     }
+    /* ---------------- 室内 ---------------- */
+    case T.FLOOR: {
+      // 木地板：横向长板 + 板缝
+      c.fillStyle = '#c9a06a';
+      c.fillRect(x, y, TILE, TILE);
+      c.fillStyle = '#b98d5c';
+      for (let i = 0; i < 3; i++) c.fillRect(x, y + 15 + i * 16, TILE, 2);
+      c.fillStyle = '#d8b481';
+      for (let i = 0; i < 3; i++) c.fillRect(x, y + 13 + i * 16, TILE, 1);
+      // 随机板端竖缝
+      const seam = Math.floor(hash(tx, ty) * 3) * 16 + 4;
+      c.fillStyle = '#b98d5c';
+      c.fillRect(x + seam, y, 2, TILE);
+      c.fillStyle = 'rgba(255,255,255,.06)';
+      c.fillRect(x, y, TILE, 1);
+      break;
+    }
+    case T.FLOOR_STONE: {
+      // 石地板：方砖 + 缝
+      c.fillStyle = '#a9a49b';
+      c.fillRect(x, y, TILE, TILE);
+      c.fillStyle = '#b8b3aa';
+      c.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      c.fillStyle = '#8f8a82';
+      c.fillRect(x, y, TILE, 2);
+      c.fillRect(x, y, 2, TILE);
+      const r2 = hash(tx * 5, ty * 7);
+      c.fillStyle = '#c4bfb6';
+      c.fillRect(x + 6 + r2 * 20, y + 8 + r2 * 18, 10, 6);
+      break;
+    }
+    case T.WALL_IN: {
+      // 室内墙：暗色木墙 + 顶部亮边
+      c.fillStyle = '#5a4636';
+      c.fillRect(x, y, TILE, TILE);
+      c.fillStyle = '#6b5544';
+      c.fillRect(x, y, TILE, TILE - 4);
+      c.fillStyle = 'rgba(0,0,0,.18)';
+      c.fillRect(x, y + TILE - 6, TILE, 6);
+      // 砖缝
+      c.fillStyle = 'rgba(0,0,0,.14)';
+      const off = (ty % 2) * 24;
+      c.fillRect(x + ((tx * 24 + off) % TILE), y, 2, TILE);
+      break;
+    }
+    case T.DOOR: {
+      if (getScene() === 'farm') {
+        // 农场上的门：house 的门会被 drawHouse 覆盖，这里给 coop/barn 画门
+        c.fillStyle = pal.grass;
+        c.fillRect(x, y, TILE, TILE);
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 6, y + 8, TILE - 12, TILE - 8);
+        c.fillStyle = '#7a5334';
+        c.fillRect(x + 9, y + 11, TILE - 18, TILE - 11);
+        c.fillStyle = '#e8c86a';
+        c.fillRect(x + TILE - 16, y + 26, 4, 4);
+      } else {
+        // 室内门：木门 + 门框
+        c.fillStyle = '#3d2f24';
+        c.fillRect(x, y, TILE, TILE);
+        c.fillStyle = '#7a5334';
+        c.fillRect(x + 4, y + 2, TILE - 8, TILE - 2);
+        c.fillStyle = '#9b7350';
+        c.fillRect(x + 7, y + 5, TILE - 14, TILE - 8);
+        c.fillStyle = '#e8c86a';
+        c.fillRect(x + TILE - 16, y + TILE / 2, 4, 4);
+      }
+      break;
+    }
     default: {
       c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
     }
+  }
+}
+
+/* ---------------- 室内家具 ---------------- */
+
+/** 房间内一圈暖色光晕，让室内不像一块平的色板 */
+function drawIndoorLighting(c: Ctx, scene: string) {
+  const r = ROOMS[scene as 'house' | 'coop' | 'barn'];
+  if (!r) return;
+  const rx = (r.x0 + r.x1 + 1) / 2 * TILE;
+  const ry = (r.y0 + r.y1 + 1) / 2 * TILE;
+  const g = c.createRadialGradient(rx, ry, 40, rx, ry, 280);
+  g.addColorStop(0, 'rgba(255,225,160,.14)');
+  g.addColorStop(1, 'rgba(255,225,160,0)');
+  c.fillStyle = g;
+  c.fillRect(r.x0 * TILE, r.y0 * TILE, (r.x1 - r.x0 + 1) * TILE, (r.y1 - r.y0 + 1) * TILE);
+}
+
+function drawFurniture(c: Ctx, scene: string) {
+  for (const f of FURNITURE) {
+    if (f.scene !== scene) continue;
+    const x = f.tx * TILE, y = f.ty * TILE;
+    const w = f.w * TILE, h = f.h * TILE;
+
+    switch (f.kind) {
+      case 'rug': {
+        c.fillStyle = 'rgba(160,80,70,.25)';
+        c.fillRect(x + 2, y + 2, w - 4, h - 4);
+        c.fillStyle = 'rgba(200,120,100,.22)';
+        c.fillRect(x + 8, y + 8, w - 16, h - 16);
+        c.strokeStyle = 'rgba(180,100,85,.35)';
+        c.lineWidth = 2;
+        c.strokeRect(x + 4, y + 4, w - 8, h - 8);
+        break;
+      }
+      case 'bed': {
+        // 床架
+        c.fillStyle = '#6b4a2e';
+        c.fillRect(x + 2, y + 2, w - 4, h - 4);
+        c.fillStyle = '#8a6340';
+        c.fillRect(x + 4, y + 4, w - 8, h - 8);
+        // 床垫
+        c.fillStyle = '#f2ece0';
+        c.fillRect(x + 7, y + 8, w - 14, h - 14);
+        c.fillStyle = '#fffdf7';
+        c.fillRect(x + 7, y + 8, w - 14, 5);
+        // 枕头
+        c.fillStyle = '#e8eef5';
+        c.fillRect(x + 10, y + 10, w - 20, 14);
+        c.fillStyle = '#cfdae5';
+        c.fillRect(x + 10, y + 20, w - 20, 3);
+        // 被子
+        c.fillStyle = '#8fb8d8';
+        c.fillRect(x + 7, y + 28, w - 14, h - 36);
+        c.fillStyle = '#a8cbe6';
+        c.fillRect(x + 7, y + 28, w - 14, 4);
+        // 被角
+        c.fillStyle = '#7aa5c6';
+        c.fillRect(x + 7, y + 28, 3, h - 36);
+        break;
+      }
+      case 'shelf': {
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 2, y + 4, w - 4, h - 8);
+        c.fillStyle = '#8a6340';
+        c.fillRect(x + 5, y + 7, w - 10, h - 14);
+        // 书脊
+        const cols = ['#c9563f', '#4a8fbe', '#6fae4e', '#e2a13c', '#b06a8f'];
+        for (let i = 0; i < 6; i++) {
+          c.fillStyle = cols[i % cols.length];
+          c.fillRect(x + 8 + i * 7, y + 10, 5, h - 22);
+        }
+        c.fillStyle = 'rgba(0,0,0,.18)';
+        c.fillRect(x + 5, y + h - 8, w - 10, 3);
+        break;
+      }
+      case 'table': {
+        c.fillStyle = '#6b4a2e';
+        c.fillRect(x + 4, y + 6, w - 8, h - 14);
+        c.fillStyle = '#a97c4f';
+        c.fillRect(x + 6, y + 8, w - 12, h - 20);
+        c.fillStyle = '#c1966a';
+        c.fillRect(x + 6, y + 8, w - 12, 3);
+        // 桌腿
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 8, y + h - 10, 5, 8);
+        c.fillRect(x + w - 13, y + h - 10, 5, 8);
+        break;
+      }
+      case 'nest': {
+        c.fillStyle = '#8a6a3e';
+        c.fillRect(x + 4, y + 8, w - 8, h - 10);
+        c.fillStyle = '#a8844e';
+        c.fillRect(x + 6, y + 10, w - 12, h - 14);
+        // 草垫
+        c.fillStyle = '#c9a95e';
+        for (let i = 0; i < 7; i++) {
+          c.fillRect(x + 8 + i * 18, y + 14 + (i % 2) * 4, 14, 3);
+        }
+        // 蛋
+        c.fillStyle = '#f7f2e8';
+        c.beginPath(); c.ellipse(x + w / 2 - 20, y + 20, 5, 6, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(x + w / 2 + 18, y + 22, 5, 6, 0, 0, Math.PI * 2); c.fill();
+        break;
+      }
+      case 'trough': {
+        c.fillStyle = '#6b4a2e';
+        c.fillRect(x + 2, y + 6, w - 4, h - 6);
+        c.fillStyle = '#a97c4f';
+        c.fillRect(x + 4, y + 8, w - 8, h - 12);
+        // 槽内饲料
+        c.fillStyle = '#c9a95e';
+        c.fillRect(x + 7, y + 11, w - 14, h - 20);
+        c.fillStyle = '#dcc07a';
+        for (let i = 0; i < Math.floor(w / 20); i++) {
+          c.fillRect(x + 9 + i * 20, y + 13, 8, 3);
+        }
+        break;
+      }
+      case 'hay': {
+        c.fillStyle = '#a8843e';
+        c.fillRect(x + 1, y + 4, w - 2, h - 6);
+        c.fillStyle = '#c9a44e';
+        c.fillRect(x + 3, y + 6, w - 6, h - 10);
+        // 干草纹
+        c.fillStyle = '#dcc06a';
+        for (let i = 0; i < 5; i++) {
+          c.fillRect(x + 5 + (i % 2) * 3, y + 8 + i * 8, w - 12, 2);
+        }
+        c.fillStyle = '#8a6a30';
+        c.fillRect(x + 1, y + h - 6, w - 2, 4);
+        break;
+      }
+    }
+
+    // 家具底部统一加一条接触阴影
+    c.fillStyle = 'rgba(40,30,20,.14)';
+    c.fillRect(x + 2, y + h - 3, w - 4, 3);
   }
 }
 
@@ -580,14 +792,16 @@ function drawTownBuildings(c: Ctx) {
 
 /* ---------------- 动物 ---------------- */
 
-function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
-  const bob = a.moving ? Math.sin(nowMs / 120 + a.x) * 1.2 : 0;
-  const x = a.x, y = a.y + bob;
+function drawAnimal(c: Ctx, a: Animal, nowMs: number, pos?: { x: number; y: number }) {
+  const px = pos ? pos.x : a.x;
+  const py = pos ? pos.y : a.y;
+  const bob = a.moving && !pos ? Math.sin(nowMs / 120 + px) * 1.2 : 0;
+  const x = px, y = py + bob;
   const faceLeft = a.dir === 'left';
   // 幼崽整体缩小
   const scale = a.adult ? 1 : 0.62;
 
-  softShadow(c, x, a.y + 2, (a.kind === 'cow' ? 15 : 9) * scale, 3.6 * scale, 0.28);
+  softShadow(c, x, py + 2, (a.kind === 'cow' ? 15 : 9) * scale, 3.6 * scale, 0.28);
 
   c.save();
   c.translate(x, y);
@@ -778,41 +992,53 @@ export function render(state: GameState, dt: number, nowMs: number) {
   ctx.save();
   ctx.translate(ox, oy);
 
-  // 耕地与作物（未解锁的地块不画，底图上是普通草地）
-  for (let i = 0; i < state.plots.length; i++) {
-    if (!areaUnlocked(plotAreaOf(i), state.farmUnlocked)) continue;
-    const { tx, ty } = plotTileOf(i);
-    drawPlot(ctx, state.plots[i], tx * TILE, ty * TILE, nowMs);
-  }
+  const sceneId = state.scene;
+  const indoor = sceneId !== 'farm';
 
-  // 水波
-  drawWaterShimmer(ctx, nowMs);
+  // 耕地与作物（只在农场；未解锁的地块不画）
+  if (!indoor) {
+    for (let i = 0; i < state.plots.length; i++) {
+      if (!areaUnlocked(plotAreaOf(i), state.farmUnlocked)) continue;
+      const { tx, ty } = plotTileOf(i);
+      drawPlot(ctx, state.plots[i], tx * TILE, ty * TILE, nowMs);
+    }
+    drawWaterShimmer(ctx, nowMs);
+  }
 
   // 需要按 y 排序的实体
   interface Entity { y: number; draw: () => void }
   const ents: Entity[] = [];
 
-  for (const node of state.nodes) {
-    if (node.hp <= 0 && node.regrowDay <= 0) continue;
-    ents.push({
-      y: node.ty * TILE + TILE,
-      draw: () => drawNode(ctx, node, nowMs)
+  if (!indoor) {
+    for (const node of state.nodes) {
+      if (node.hp <= 0 && node.regrowDay <= 0) continue;
+      ents.push({
+        y: node.ty * TILE + TILE,
+        draw: () => drawNode(ctx, node, nowMs)
+      });
+    }
+
+    for (const o of OBJECTS) {
+      ents.push({
+        y: o.ty * TILE + TILE,
+        draw: () => drawObject(ctx, o.kind, o.tx * TILE, o.ty * TILE, nowMs)
+      });
+    }
+
+    for (const a of state.animals) {
+      ents.push({ y: a.y + 2, draw: () => drawAnimal(ctx, a, nowMs) });
+    }
+
+    for (const v of state.villagers ?? []) {
+      ents.push({ y: v.y + 2, draw: () => drawVillager(ctx, v, nowMs) });
+    }
+  } else {
+    // 室内：只显示住在这个棚里的动物，位置按序号排布
+    const dwellers = state.animals.filter((a) => sceneOfAnimal(a.kind) === sceneId);
+    dwellers.forEach((a, i) => {
+      const pos = indoorAnimalPos(sceneId as 'coop' | 'barn', i);
+      ents.push({ y: pos.y + 2, draw: () => drawAnimal(ctx, a, nowMs, pos) });
     });
-  }
-
-  for (const o of OBJECTS) {
-    ents.push({
-      y: o.ty * TILE + TILE,
-      draw: () => drawObject(ctx, o.kind, o.tx * TILE, o.ty * TILE, nowMs)
-    });
-  }
-
-  for (const a of state.animals) {
-    ents.push({ y: a.y + 2, draw: () => drawAnimal(ctx, a, nowMs) });
-  }
-
-  for (const v of state.villagers ?? []) {
-    ents.push({ y: v.y + 2, draw: () => drawVillager(ctx, v, nowMs) });
   }
 
   ents.push({
@@ -832,11 +1058,13 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   ctx.restore();
 
-  // 季节色罩 → 昼夜 → 降水
-  drawSeasonTint(ctx);
+  // 季节色罩 → 昼夜 → 降水（室内只有昼夜，没有雨雪）
+  if (!indoor) drawSeasonTint(ctx);
   drawDayNight(ctx, state);
-  if (state.weather === 'rain') drawRain(ctx, nowMs);
-  else if (state.weather === 'snow') drawSnow(ctx, nowMs);
+  if (!indoor) {
+    if (state.weather === 'rain') drawRain(ctx, nowMs);
+    else if (state.weather === 'snow') drawSnow(ctx, nowMs);
+  }
 }
 
 /* ---------------- 耕地 ---------------- */
@@ -1513,7 +1741,7 @@ function drawPrompt(c: Ctx, state: GameState, nowMs: number) {
     cy = nearV.y - 66 + Math.sin(nowMs / 420) * 2;
   } else {
   // 其次：面朝的动物
-  const near = animalNear(state, state.player.x, state.player.y, state.player.dir);
+  const near = animalNearInScene(state, state.player.x, state.player.y, state.player.dir);
   if (near) {
     const def = ANIMAL_DEFS[near.kind];
     label = `照顾 ${def.name}`;

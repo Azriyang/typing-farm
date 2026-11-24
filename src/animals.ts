@@ -6,7 +6,7 @@
    ============================================================ */
 
 import type { Animal, AnimalKind, Dir, GameState } from './types';
-import { TILE, PENS } from './world';
+import { TILE, PENS, getScene, sceneOfAnimal, indoorAnimalPos } from './world';
 
 export interface AnimalDef {
   kind: AnimalKind;
@@ -218,6 +218,31 @@ export function animalNear(state: GameState, px: number, py: number, dir: Dir): 
     const d = Math.hypot(a.x - fx, a.y - fy);
     if (d < bestD) { bestD = d; best = a; }
   }
+  return best;
+}
+
+/**
+ * 场景感知的「面前最近的动物」。
+ * 农场用自由坐标，室内用排布位置。
+ */
+export function animalNearInScene(state: GameState, px: number, py: number, dir: Dir): Animal | null {
+  const s = getScene();
+  if (s === 'farm') return animalNear(state, px, py, dir);
+  // 住宅里没有动物
+  if (s === 'house') return null;
+
+  const [dvx, dvy] = DIR_VEC[dir];
+  const fx = px + dvx * 34;
+  const fy = py + dvy * 34;
+  const dwellers = state.animals.filter((a) => sceneOfAnimal(a.kind) === s);
+
+  let best: Animal | null = null;
+  let bestD = 56;
+  dwellers.forEach((a, i) => {
+    const pos = indoorAnimalPos(s, i);
+    const d = Math.hypot(pos.x - fx, pos.y - fy);
+    if (d < bestD) { bestD = d; best = a; }
+  });
   return best;
 }
 

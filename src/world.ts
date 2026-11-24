@@ -2,7 +2,7 @@
    world.ts — 地图、地形、碰撞、交互目标
    ============================================================ */
 
-import type { Dir, Player } from './types';
+import type { Dir, Player, SceneId } from './types';
 
 export const TILE = 48;
 export const MAP_W = 50;
@@ -22,10 +22,79 @@ export const T = {
   ROOF: 5,
   DOOR: 6,
   TREE: 7,
-  FLOWER: 8
+  FLOWER: 8,
+  /* ---- 室内 ---- */
+  /** 木地板 */
+  FLOOR: 9,
+  /** 石地板（棚舍） */
+  FLOOR_STONE: 10,
+  /** 室内墙 */
+  WALL_IN: 11
 } as const;
 
 export type TileId = (typeof T)[keyof typeof T];
+
+/* ---------------- 室内家具 ---------------- */
+
+export type FurnitureKind = 'bed' | 'shelf' | 'table' | 'trough' | 'nest' | 'hay' | 'rug';
+
+export interface Furniture {
+  kind: FurnitureKind;
+  tx: number;
+  ty: number;
+  w: number;
+  h: number;
+  scene: 'house' | 'coop' | 'barn';
+}
+
+/** 家具按整个方块绘制（不是逐格拼），坐标是左上角 */
+export const FURNITURE: Furniture[] = [
+  // 住宅
+  { kind: 'bed', tx: 18, ty: 7, w: 2, h: 3, scene: 'house' },
+  { kind: 'shelf', tx: 30, ty: 7, w: 2, h: 1, scene: 'house' },
+  { kind: 'table', tx: 23, ty: 12, w: 3, h: 2, scene: 'house' },
+  { kind: 'rug', tx: 21, ty: 10, w: 4, h: 3, scene: 'house' },
+  // 鸡舍
+  { kind: 'nest', tx: 19, ty: 7, w: 3, h: 1, scene: 'coop' },
+  { kind: 'trough', tx: 19, ty: 11, w: 4, h: 1, scene: 'coop' },
+  { kind: 'hay', tx: 28, ty: 12, w: 1, h: 2, scene: 'coop' },
+  // 牛棚
+  { kind: 'trough', tx: 17, ty: 7, w: 6, h: 1, scene: 'barn' },
+  { kind: 'trough', tx: 27, ty: 7, w: 6, h: 1, scene: 'barn' },
+  { kind: 'hay', tx: 16, ty: 13, w: 3, h: 2, scene: 'barn' },
+  { kind: 'hay', tx: 31, ty: 14, w: 2, h: 1, scene: 'barn' },
+  { kind: 'rug', tx: 22, ty: 10, w: 9, h: 4, scene: 'barn' }
+];
+
+export function furnitureAt(scene: SceneId, tx: number, ty: number): Furniture | null {
+  for (const f of FURNITURE) {
+    if (f.scene !== scene) continue;
+    if (tx >= f.tx && tx < f.tx + f.w && ty >= f.ty && ty < f.ty + f.h) return f;
+  }
+  return null;
+}
+
+/** 哪种动物住哪个棚 */
+export function sceneOfAnimal(kind: string): 'coop' | 'barn' {
+  return kind === 'chicken' ? 'coop' : 'barn';
+}
+
+/**
+ * 动物在室内的位置：按序号排在房间中部的空地上。
+ * 室内场地小，不做游走，固定站位更整齐。
+ */
+export function indoorAnimalPos(scene: 'coop' | 'barn', index: number): { x: number; y: number } {
+  const r = ROOMS[scene];
+  const cols = 4;
+  const col = index % cols;
+  const row = Math.floor(index / cols);
+  const startX = r.x0 + 3;
+  const startY = r.y0 + 4;
+  return {
+    x: (startX + col * 3) * 48 + 24,
+    y: (startY + row * 3) * 48 + 24
+  };
+}
 
 /** 耕地区域：第 0 块初始就有，第 1 块要花钱买 */
 export const FARM_AREAS = [
@@ -130,11 +199,80 @@ function setRect(x0: number, y0: number, w: number, h: number, t: TileId): void 
   }
 }
 
+/* ---------------- 场景 ---------------- */
+
+/** 室内房间布局：地板范围 + 门位置（门在底边，用于出入） */
+export interface Room {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  floor: TileId;
+  door: { tx: number; ty: number };
+  /** 进入后站的位置（门内侧一格） */
+  spawn: { tx: number; ty: number; dir: Dir };
+}
+
+export const ROOMS: Record<'house' | 'coop' | 'barn', Room> = {
+  house: {
+    x0: 17, y0: 6, x1: 32, y1: 16,
+    floor: T.FLOOR,
+    door: { tx: 24, ty: 16 },
+    spawn: { tx: 24, ty: 15, dir: 'up' }
+  },
+  coop: {
+    x0: 17, y0: 6, x1: 30, y1: 16,
+    floor: T.FLOOR_STONE,
+    door: { tx: 23, ty: 16 },
+    spawn: { tx: 23, ty: 15, dir: 'up' }
+  },
+  barn: {
+    x0: 15, y0: 5, x1: 34, y1: 17,
+    floor: T.FLOOR_STONE,
+    door: { tx: 24, ty: 17 },
+    spawn: { tx: 24, ty: 16, dir: 'up' }
+  }
+};
+
+/** 农场里三个建筑的门位置（用于从室内走回农场时定位置） */
+export const FARM_DOORS: Record<'house' | 'coop' | 'barn', { tx: number; ty: number }> = {
+  house: { tx: 5, ty: 6 },
+  coop: { tx: 4, ty: 15 },
+  barn: { tx: 12, ty: 15 }
+};
+
+/** 从室内出来时站在门外哪里 */
+export function farmExitSpot(id: 'house' | 'coop' | 'barn'): { tx: number; ty: number; dir: Dir } {
+  const d = FARM_DOORS[id];
+  return { tx: d.tx, ty: d.ty + 1, dir: 'down' };
+}
+
+let scene: SceneId = 'farm';
+export function getScene(): SceneId {
+  return scene;
+}
+export function isIndoor(s: SceneId = scene): boolean {
+  return s !== 'farm';
+}
+
 /* ---------------- 地图生成 ---------------- */
 
-export function buildMap(): void {
-  terrain.fill(T.GRASS);
+/** 构建指定场景（会重填 terrain） */
+export function buildScene(id: SceneId): void {
+  scene = id;
   dynamicBlocked.clear();
+  if (id === 'farm') { buildFarmTerrain(); return; }
+
+  // 室内：整张图先填墙，再挖出房间地板
+  terrain.fill(T.WALL_IN);
+  const r = ROOMS[id as 'house' | 'coop' | 'barn'];
+  setRect(r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, r.floor);
+  // 门
+  set(r.door.tx, r.door.ty, T.DOOR);
+}
+
+function buildFarmTerrain(): void {
+  terrain.fill(T.GRASS);
 
   // 外圈树墙（纯装饰，不可砍）
   for (let x = 0; x < MAP_W; x++) {
@@ -163,6 +301,10 @@ export function buildMap(): void {
   setRect(3, 5, 6, 2, T.WALL);
   set(5, 6, T.DOOR);
 
+  // 鸡舍 / 牛棚的门（让玩家能从外面走进去）
+  set(FARM_DOORS.coop.tx, FARM_DOORS.coop.ty, T.DOOR);
+  set(FARM_DOORS.barn.tx, FARM_DOORS.barn.ty, T.DOOR);
+
   // 小路（农场）+ 向东延伸的进镇道路
   setRect(4, 7, 15, 1, T.PATH);
   for (let x = 4; x <= 18; x++) set(x, 8, T.PATH);
@@ -183,6 +325,11 @@ export function buildMap(): void {
   for (const [x, y] of flowers) if (tileAt(x, y) === T.GRASS) set(x, y, T.FLOWER);
 }
 
+/** 兼容旧调用：建农场 */
+export function buildMap(): void {
+  buildScene('farm');
+}
+
 /* ---------------- 碰撞 ---------------- */
 
 const BLOCKED: Record<number, boolean> = {
@@ -190,7 +337,8 @@ const BLOCKED: Record<number, boolean> = {
   [T.WALL]: true,
   [T.ROOF]: true,
   [T.DOOR]: true,
-  [T.TREE]: true
+  [T.TREE]: true,
+  [T.WALL_IN]: true
 };
 
 export function setNodeBlock(tx: number, ty: number, blocked: boolean): void {
@@ -202,12 +350,18 @@ export function isBlockedTile(x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return true;
   if (BLOCKED[tileAt(x, y)]) return true;
   if (dynamicBlocked.has(idx(x, y))) return true;
-  for (const o of OBJECTS) if (o.tx === x && o.ty === y) return true;
-  for (const b of Object.values(BUILDINGS)) {
-    if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
-  }
-  for (const b of TOWN_BUILDINGS) {
-    if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
+  // 室内家具阻挡（地毯可走）
+  const f = furnitureAt(scene, x, y);
+  if (f && f.kind !== 'rug') return true;
+  // 农场物件与建筑只在农场场景生效
+  if (scene === 'farm') {
+    for (const o of OBJECTS) if (o.tx === x && o.ty === y) return true;
+    for (const b of Object.values(BUILDINGS)) {
+      if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
+    }
+    for (const b of TOWN_BUILDINGS) {
+      if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
+    }
   }
   return false;
 }
@@ -252,8 +406,8 @@ export function areaUnlocked(k: number, farmUnlocked: number): boolean {
 }
 
 export function isFarmTile(tx: number, ty: number): boolean {
-  let offset = 0;
-  void offset;
+  // 耕地只存在于农场场景
+  if (scene !== 'farm') return false;
   for (const a of FARM_AREAS) {
     if (tx >= a.x && tx < a.x + a.cols && ty >= a.y && ty < a.y + a.rows) return true;
   }
@@ -296,7 +450,7 @@ export function unlockArea(k: number): void {
 /* ---------------- 交互目标 ---------------- */
 
 export interface Target {
-  kind: 'plot' | 'object' | 'door';
+  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf';
   tx: number;
   ty: number;
   plotIndex: number;
@@ -321,13 +475,22 @@ export function facingTile(p: Player): { tx: number; ty: number } {
 export function targetAt(tx: number, ty: number): Target | null {
   const t = tileAt(tx, ty);
   if (t === T.DOOR) return { kind: 'door', tx, ty, plotIndex: -1 };
-  for (const o of OBJECTS) {
-    if (o.tx === tx && o.ty === ty) {
-      return { kind: 'object', tx, ty, plotIndex: -1, object: o };
-    }
+  // 室内家具
+  const f = furnitureAt(scene, tx, ty);
+  if (f) {
+    if (f.kind === 'bed') return { kind: 'bed', tx, ty, plotIndex: -1 };
+    if (f.kind === 'shelf') return { kind: 'shelf', tx, ty, plotIndex: -1 };
   }
-  const pi = plotIndexOf(tx, ty);
-  if (pi >= 0) return { kind: 'plot', tx, ty, plotIndex: pi };
+  // 农场专属：物件与耕地
+  if (scene === 'farm') {
+    for (const o of OBJECTS) {
+      if (o.tx === tx && o.ty === ty) {
+        return { kind: 'object', tx, ty, plotIndex: -1, object: o };
+      }
+    }
+    const pi = plotIndexOf(tx, ty);
+    if (pi >= 0) return { kind: 'plot', tx, ty, plotIndex: pi };
+  }
   return null;
 }
 

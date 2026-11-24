@@ -4,14 +4,14 @@
    ============================================================ */
 
 import { CROPS } from './config';
-import { targetAt, T, tileAt, plotAreaOf, areaUnlocked } from './world';
+import { targetAt, T, tileAt, plotAreaOf, areaUnlocked, isIndoor } from './world';
 import { TOOLS } from './tools';
 import type { GameState, ResNode, ToolId } from './types';
 
 export type ActionKind =
   | 'till' | 'plant' | 'water' | 'harvest'
   | 'chop' | 'mine' | 'cut' | 'fish'
-  | 'door' | 'bin' | 'order' | 'locked';
+  | 'door' | 'bin' | 'order' | 'locked' | 'sleep' | 'dex';
 
 export interface ActionInfo {
   kind: ActionKind;
@@ -80,7 +80,9 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   // 3) 门与物件
   const t = targetAt(tx, ty);
   if (!t) return null;
-  if (t.kind === 'door') return base('door', '进屋', null);
+  if (t.kind === 'door') return base('door', isIndoor() ? '出门' : '进屋', null);
+  if (t.kind === 'bed') return base('sleep', '睡觉', null);
+  if (t.kind === 'shelf') return base('dex', '图鉴', null);
   if (t.kind === 'object' && t.object) {
     if (t.object.kind === 'bin') return base('bin', '出货', null);
     if (t.object.kind === 'store') return base('order', '杂货店', null);

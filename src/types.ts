@@ -17,6 +17,8 @@ export type ToolId = 'hoe' | 'can' | 'axe' | 'pick' | 'sickle' | 'rod';
 export type Dir = 'down' | 'up' | 'left' | 'right';
 export type Weather = 'sunny' | 'rain' | 'snow';
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
+/** 场景：农场（室外）/ 住宅 / 鸡舍 / 牛棚 */
+export type SceneId = 'farm' | 'house' | 'coop' | 'barn';
 export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy';
 
 export interface CropDef {
@@ -215,6 +217,8 @@ export interface GameState {
   villagers: Villager[];
   /** 已解锁的耕地区域数（1 起） */
   farmUnlocked: number;
+  /** 当前所在场景 */
+  scene: SceneId;
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

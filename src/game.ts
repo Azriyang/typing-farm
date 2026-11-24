@@ -13,9 +13,10 @@ import {
   SEASON_LABEL, SEASON_ICON, festivalOfDay, festivalTomorrow, festivalEffects
 } from './seasons';
 import {
-  buildMap, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
+  buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
   TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
-  unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS
+  unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS,
+  ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt
 } from './world';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
@@ -26,8 +27,8 @@ import {
   toolMaxDurability, wearPerUse, repairCost, durabilityRatio, DURABILITY_WARN
 } from './tools';
 import {
-  ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals, animalNear,
-  animalById, happinessQuality, settleAnimalsOvernight, isProductReady,
+  ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals,
+  animalById, happinessQuality, settleAnimalsOvernight, isProductReady, animalNearInScene,
   canBreed, breedPartner, animalStageText, PREGNANCY_DAYS, PER_KIND_LIMIT
 } from './animals';
 import {
@@ -257,6 +258,7 @@ function normalizeState(s: GameState): void {
   if (s.plots.length > PLOT_COUNT) s.plots.length = PLOT_COUNT;
   // 旧存档没有这个字段 → 只解锁第一块（与它的 plots 数量一致）
   if (typeof s.farmUnlocked !== 'number') s.farmUnlocked = 1;
+  if (s.scene !== 'house' && s.scene !== 'coop' && s.scene !== 'barn') s.scene = 'farm';
 }
 
 function newState(): GameState {
@@ -301,6 +303,7 @@ function newState(): GameState {
     animals: [],
     villagers: VILLAGER_ORDER.map((id) => createVillager(id)),
     farmUnlocked: 1,
+    scene: 'farm',
     autoSwitch: true,
     todayCleared: 0
   };
@@ -321,6 +324,8 @@ function syncBlockers(s: GameState): void {
 }
 
 function spawnWeeds(s: GameState, count: number): void {
+  // 杂草只长在农场；室内场景直接跳过
+  if (getScene() !== 'farm') return;
   const existing = s.nodes.filter((n) => n.kind === 'weed' && n.hp > 0).length;
   const room = Math.max(0, 20 - existing);
   const want = Math.min(count, room);
@@ -909,23 +914,94 @@ function cropIdFromSeed(seedItemId: string | null): CropId | null {
 
 /* ---------------- 交互 ---------------- */
 
+/** 只读查询面前格子是什么（不含动作解析） */
+function targetAtSafe(tx: number, ty: number) {
+  return targetAt(tx, ty);
+}
+
+/** 门：在农场走进建筑，在室内走回农场 */
+function useDoor(tx: number, ty: number): void {
+  const s = state.scene;
+  if (s === 'farm') {
+    if (tx === FARM_DOORS.house.tx && ty === FARM_DOORS.house.ty) { enterScene('house'); return; }
+    if (tx === FARM_DOORS.coop.tx && ty === FARM_DOORS.coop.ty) { enterScene('coop'); return; }
+    if (tx === FARM_DOORS.barn.tx && ty === FARM_DOORS.barn.ty) { enterScene('barn'); return; }
+  } else {
+    exitToFarm();
+  }
+}
+
+function enterScene(id: 'house' | 'coop' | 'barn'): void {
+  state.scene = id;
+  buildScene(id);
+  applySeason(seasonOfDay(state.day));
+  const r = ROOMS[id];
+  state.player.x = r.spawn.tx * TILE + TILE / 2;
+  state.player.y = r.spawn.ty * TILE + TILE / 2;
+  state.player.dir = r.spawn.dir;
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
+  UI.toast(id === 'house' ? '回到了家' : id === 'coop' ? '走进鸡舍' : '走进牛棚', 'good');
+}
+
+function exitToFarm(): void {
+  const from = state.scene as 'house' | 'coop' | 'barn';
+  state.scene = 'farm';
+  buildScene('farm');
+  // 恢复已解锁的耕地与动态阻挡（树/岩石）
+  for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
+  syncBlockers(state);
+  applySeason(seasonOfDay(state.day));
+  const spot = farmExitSpot(from);
+  state.player.x = spot.tx * TILE + TILE / 2;
+  state.player.y = spot.ty * TILE + TILE / 2;
+  state.player.dir = spot.dir;
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
+}
+
+/** 床边确认睡觉 */
+function askSleep(): void {
+  UI.showModal(
+    '床',
+    `<p>要睡觉吗？</p>
+     <p class="dim">睡觉会结束第 ${state.day} 天。浇过水的作物会在夜里生长，动物也会结算。</p>`,
+    [
+      { label: '再待会儿', cls: 'ghost', onClick: () => UI.hideModal() },
+      { label: '睡觉', cls: 'green', onClick: () => { UI.hideModal(); sleep(); } }
+    ]
+  );
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
 
-  // 优先：面朝的村民
-  const nearV = villagerNear(state, state.player.x, state.player.y, state.player.dir);
-  if (nearV) { openVillagerPanel(nearV); return; }
+  const { tx, ty } = facingTile(state.player);
+
+  // 门：进出场景（优先于其它交互）
+  const tgt = targetAtSafe(tx, ty);
+  if (tgt?.kind === 'door') { useDoor(tx, ty); return; }
+  if (tgt?.kind === 'bed') { askSleep(); return; }
+  if (tgt?.kind === 'shelf') { openDex(); return; }
+
+  // 优先：面朝的村民（只在农场有村民）
+  if (!isIndoor(state.scene)) {
+    const nearV = villagerNear(state, state.player.x, state.player.y, state.player.dir);
+    if (nearV) { openVillagerPanel(nearV); return; }
+  }
 
   // 其次：面朝的动物
-  const near = animalNear(state, state.player.x, state.player.y, state.player.dir);
+  const near = animalNearInScene(state, state.player.x, state.player.y, state.player.dir);
   if (near) { openAnimalPanel(near); return; }
 
-  const { tx, ty } = facingTile(state.player);
   const info = resolveTarget(state, tx, ty);
   if (!info) return;
 
-  if (info.kind === 'door') { openHouse(); return; }
   if (info.kind === 'bin') { openBin(); return; }
   if (info.kind === 'order') { openShop(); return; }
   if (info.kind === 'locked') {
@@ -2119,24 +2195,6 @@ function renderWords(): void {
 
 /* ---------------- 房屋 ---------------- */
 
-function openHouse(): void {
-  UI.showModal(
-    '温暖的小屋',
-    `<p>墙上挂着爷爷的旧照片，桌上还有半杯凉茶。</p>
-     <div class="report-grid">
-       <span class="k">现在是</span><span class="v">第 ${state.day} 天 ${UI.clockText(state.time)}</span>
-       <span class="k">体力</span><span class="v">${Math.round(state.stamina)} / ${CFG.STAMINA_MAX}</span>
-       <span class="k">金币</span><span class="v">${state.coins} G</span>
-     </div>
-     <p class="dim">睡觉会结束今天，作物在夜里生长；没浇水的作物不会长。</p>`,
-    [
-      { label: '农场图鉴', cls: 'ghost', onClick: openDex },
-      { label: '睡一觉', cls: 'green', onClick: () => { UI.hideModal(); sleep(); } },
-      { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
-    ]
-  );
-}
-
 function openDex(): void {
   const items = CROP_ORDER.map((id) => {
     const c = CROPS[id];
@@ -2464,7 +2522,7 @@ function onKeyUp(e: KeyboardEvent): void {
 
 function startGame(fresh: boolean): void {
   if (fresh) state = newState();
-  applySeason(seasonOfDay(state.day));
+  restoreScene();
   running = true;
   UI.hideHint();
   document.getElementById('title-screen')?.classList.add('hidden');
@@ -2479,6 +2537,16 @@ function startGame(fresh: boolean): void {
   if (fest) window.setTimeout(() => UI.toast(`${fest.icon} 今天是${fest.name}：${fest.effect}`, 'good'), 300);
 
   if (fresh) showIntro();
+}
+
+/** 按当前存档的场景重建地形与底图（读档 / 开工时） */
+function restoreScene(): void {
+  buildScene(state.scene);
+  if (state.scene === 'farm') {
+    for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
+    syncBlockers(state);
+  }
+  applySeason(seasonOfDay(state.day));
 }
 
 function showIntro(): void {
@@ -2575,7 +2643,14 @@ function setupTitle(): void {
           <li><b>送礼</b>：送出去后听对方怎么说，就知道送得对不对；每人每天限聊一次、送一次</li>
           <li>好感用心形表示；掌柜好感够高时种子打折</li>
         </ul>
-        <h3>一天的循环</h3>
+        <h3>进屋</h3>
+         <ul>
+           <li>走到门前按空格就能进屋：住宅、鸡舍、牛棚都能进去</li>
+           <li>屋里有床（走到床边按空格睡觉）、书架（看图鉴）</li>
+           <li>鸡舍 / 牛棚里能直接照料那里的动物</li>
+           <li>屋里的门在下方，走到门口按空格出去</li>
+         </ul>
+         <h3>一天的循环</h3>
        <ul>
          <li>每做一次农活消耗体力并推进时间，22:00 后体力消耗翻倍</li>
          <li>回屋睡觉 → 浇过水的作物生长；杂草每天重新长出来</li>
@@ -2599,7 +2674,7 @@ function setupTitle(): void {
 }
 
 export function boot(): void {
-  buildMap();
+  buildScene('farm');
 
   const cv = UI.$<HTMLCanvasElement>('cv');
   initRenderer(cv, window.devicePixelRatio || 1);

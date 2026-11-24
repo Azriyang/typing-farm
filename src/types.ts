@@ -80,6 +80,8 @@ export interface ToolState {
   owned: boolean;
   /** 1~4：铜 / 银 / 金 / 秘银 */
   tier: number;
+  /** 剩余耐久；0 表示损坏，必须修理才能用 */
+  durability: number;
 }
 
 /* ---------------- 资源节点 ---------------- */

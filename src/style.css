@@ -784,3 +784,28 @@ html, body {
 .happy-bar.wool i { background: linear-gradient(90deg, #d8cbb8, #b8a892); }
 /* 动物状态行（幼崽 / 怀孕） */
 .animal-status .as-row .v.stage { color: #b06a8f; font-weight: 800; }
+/* ---- 工具耐久 ---- */
+
+.hb-slot .dur-bar {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 1px;
+  height: 3px;
+  background: rgba(0,0,0,.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.hb-slot .dur-bar i {
+  display: block;
+  height: 100%;
+  background: #6cb45a;
+  border-radius: 2px;
+  transition: width .2s;
+}
+.hb-slot .dur-bar.low i { background: #e2a13c; }
+.hb-slot .dur-bar.dead i { background: #d9534f; }
+
+.shop-row .dur.ok { color: #4a8a3c; }
+.shop-row .dur.warn { color: #d9772f; }
+.shop-row .dur.bad { color: #c0392b; }

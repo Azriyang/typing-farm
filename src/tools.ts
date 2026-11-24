@@ -97,6 +97,36 @@ export function tierInfo(tier: number): TierInfo {
   return TIERS[Math.max(0, Math.min(TIERS.length - 1, tier - 1))];
 }
 
+/* ---------------- 耐久 ---------------- */
+
+/** 各等级的耐久上限：升级顺带更耐用 */
+const TIER_DURABILITY = [100, 140, 180, 240];
+
+export function toolMaxDurability(tier: number): number {
+  return TIER_DURABILITY[Math.max(0, Math.min(TIER_DURABILITY.length - 1, tier - 1))];
+}
+
+/** 一次劳作消耗的耐久（秘银更省） */
+export function wearPerUse(tier: number): number {
+  return tier >= 4 ? 0.5 : 1;
+}
+
+/**
+ * 修理费用：等级越高越贵。
+ * 刻意只要金币、不要材料——否则「修工具要石材 → 石材要镐挖 → 镐也坏了」会死锁。
+ */
+export function repairCost(tier: number): number {
+  return tier * 60;
+}
+
+/** 耐久低于这个比例就提示「快坏了」 */
+export const DURABILITY_WARN = 0.2;
+
+export function durabilityRatio(durability: number, tier: number): number {
+  const max = toolMaxDurability(tier);
+  return max <= 0 ? 0 : Math.max(0, Math.min(1, durability / max));
+}
+
 /** 斧头/镐这类"敲石头"的升级偏石材 */
 export function upgradeMaterial(tool: ToolId, tier: number): { wood: number; stone: number; cost: number } {
   const t = tierInfo(tier);

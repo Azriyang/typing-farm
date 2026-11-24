@@ -22,7 +22,8 @@ import {
 } from './action';
 import {
   TOOLS, NODE_DEFS, tierInfo, upgradeMaterial, multiTarget, hitCount,
-  dropMultiplier, repeatCount, biteWindow, BITE_DELAY
+  dropMultiplier, repeatCount, biteWindow, BITE_DELAY,
+  toolMaxDurability, wearPerUse, repairCost, durabilityRatio, DURABILITY_WARN
 } from './tools';
 import {
   ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals, animalNear,
@@ -224,7 +225,10 @@ function emptyHotbar(): (HotbarRef | null)[] {
 function normalizeState(s: GameState): void {
   if (!s.tools) s.tools = {} as GameState['tools'];
   for (const id of Object.keys(TOOLS) as ToolId[]) {
-    if (!s.tools[id]) s.tools[id] = { id, owned: id === 'hoe' || id === 'can', tier: 1 };
+    if (!s.tools[id]) s.tools[id] = { id, owned: id === 'hoe' || id === 'can', tier: 1, durability: toolMaxDurability(1) };
+    // 旧档没有耐久字段 → 按当前等级补满
+    const t = s.tools[id];
+    if (typeof t.durability !== 'number') t.durability = toolMaxDurability(t.tier);
   }
   if (!s.stats) s.stats = {} as GameState['stats'];
   if (typeof s.stats.fishCaught !== 'number') s.stats.fishCaught = 0;
@@ -272,7 +276,7 @@ function newState(): GameState {
 
   const tools = {} as GameState['tools'];
   for (const id of Object.keys(TOOLS) as ToolId[]) {
-    tools[id] = { id, owned: id === 'hoe' || id === 'can', tier: 1 };
+    tools[id] = { id, owned: id === 'hoe' || id === 'can', tier: 1, durability: toolMaxDurability(1) };
   }
 
   const s: GameState = {
@@ -604,6 +608,8 @@ function spend(p: Pending): void {
   state.stamina = Math.max(0, state.stamina - p.stamina);
   state.time += p.time;
   state.stats.actions++;
+  // 用工具干的活才会磨损（徒手的播种/收获不算）
+  if (p.tool) wearTool(p.tool);
   currentLabel = '走近田地，按空格开始劳作';
   UI.resetTypingCache();
   if (state.time >= 26 * 60) {
@@ -613,6 +619,21 @@ function spend(p: Pending): void {
     return;
   }
   if (state.stamina <= 0) faint();
+}
+
+/** 消耗一次耐久；归零时提示坏了 */
+function wearTool(tool: ToolId): void {
+  const t = state.tools[tool];
+  if (!t) return;
+  const before = t.durability;
+  t.durability = Math.max(0, t.durability - wearPerUse(t.tier));
+
+  if (before > 0 && t.durability <= 0) {
+    UI.toast(`${TOOLS[tool].name}坏了！得修一修才能继续用`, 'bad');
+    Sound.play('fail');
+  } else if (durabilityRatio(t.durability, t.tier) < DURABILITY_WARN && durabilityRatio(before, t.tier) >= DURABILITY_WARN) {
+    UI.toast(`${TOOLS[tool].name}快磨坏了，记得修`, 'bad');
+  }
 }
 
 /* ---------------- 钓鱼 ---------------- */
@@ -821,6 +842,15 @@ function buildWords(info: ActionInfo, crop: CropId | null): Word[] {
 
 function startAction(info: ActionInfo): void {
   if (session.active) return;
+
+  // 工具坏了不能干活
+  if (info.tool) {
+    const t = state.tools[info.tool];
+    if (t && t.durability <= 0) {
+      UI.toast(`${TOOLS[info.tool].name}已经坏了，去订购箱修一下`, 'bad');
+      return;
+    }
+  }
 
   const cost = actionCost(info);
   if (state.stamina < cost.stamina) {
@@ -1478,29 +1508,45 @@ function openShop(): void {
         <div class="buy-group"><button class="btn small" data-tool="${id}" ${state.coins < def.price ? 'disabled' : ''}>购买</button></div>
       </div>`;
     }
+
+    // 耐久
+    const max = toolMaxDurability(st.tier);
+    const ratio = durabilityRatio(st.durability, st.tier);
+    const durText = st.durability <= 0 ? '已损坏' : `${Math.ceil(st.durability)}/${max}`;
+    const durCls = ratio <= 0 ? 'bad' : ratio < DURABILITY_WARN ? 'warn' : 'ok';
+    const rc = repairCost(st.tier);
+    const needRepair = st.durability < max;
+    const canRepair = needRepair && state.coins >= rc;
+    const repairBtn = needRepair
+      ? `<button class="btn small ${canRepair ? '' : 'ghost'}" data-repair="${id}" ${canRepair ? '' : 'disabled'}
+           title="修理 ${rc}G">修 ${rc}G</button>`
+      : '';
+
     if (st.tier >= 4) {
       return `<div class="shop-row done">
         <div><div class="nm">${def.icon} 秘银${def.name}</div>
-        <div class="dt">已满级 · ${tierInfo(4).desc}</div></div>
-        <div class="pr">MAX</div><div class="buy-group"></div>
+        <div class="dt">已满级 · 耐久 <b class="dur ${durCls}">${durText}</b></div></div>
+        <div class="pr">MAX</div>
+        <div class="buy-group">${repairBtn}</div>
       </div>`;
     }
+
     const next = st.tier + 1;
     const info = tierInfo(next);
     const mat = upgradeMaterial(id, next);
     const wood = Bag.countInBag(state.bag, 'mat.wood');
-    const stone = Bag.countInBag(state.bag, 'mat.stone');
-    const enough = state.coins >= mat.cost && wood >= mat.wood && stone >= mat.stone;
+    const stoneHave = Bag.countInBag(state.bag, 'mat.stone');
+    const enough = state.coins >= mat.cost && wood >= mat.wood && stoneHave >= mat.stone;
     const need = [
       mat.cost > 0 ? `${mat.cost}G` : '',
       mat.wood > 0 ? `木${mat.wood}(${wood})` : '',
-      mat.stone > 0 ? `石${mat.stone}(${stone})` : ''
+      mat.stone > 0 ? `石${mat.stone}(${stoneHave})` : ''
     ].filter(Boolean).join(' + ');
-    return `<div class="shop-row${enough ? '' : ' cant'}">
+    return `<div class="shop-row">
       <div><div class="nm">${def.icon} ${['铜', '银', '金', '秘银'][st.tier - 1]}${def.name} → ${info.name}${def.name}</div>
-      <div class="dt">${info.desc} · 需要 ${need}</div></div>
+      <div class="dt">耐久 <b class="dur ${durCls}">${durText}</b> · ${info.desc} · 需要 ${need}</div></div>
       <div class="pr">${info.name}</div>
-      <div class="buy-group"><button class="btn small" data-up="${id}" ${enough ? '' : 'disabled'}>升级</button></div>
+      <div class="buy-group">${repairBtn}<button class="btn small" data-up="${id}" ${enough ? '' : 'disabled'}>升级</button></div>
     </div>`;
   }).join('');
 
@@ -1569,6 +1615,9 @@ function openShop(): void {
   document.querySelectorAll<HTMLElement>('[data-up]').forEach((el) => {
     el.addEventListener('click', () => upgradeTool(el.dataset.up as ToolId));
   });
+  document.querySelectorAll<HTMLElement>('[data-repair]').forEach((el) => {
+    el.addEventListener('click', () => repairTool(el.dataset.repair as ToolId));
+  });
   document.querySelectorAll<HTMLElement>('[data-animal]').forEach((el) => {
     el.addEventListener('click', () => buyAnimal(el.dataset.animal as AnimalKind));
   });
@@ -1626,6 +1675,7 @@ function buyTool(id: ToolId): void {
   state.coins -= def.price;
   state.tools[id].owned = true;
   state.tools[id].tier = 1;
+  state.tools[id].durability = toolMaxDurability(1);
 
   const slot = state.hotbar.findIndex((r) => r === null);
   if (slot >= 0) state.hotbar[slot] = { type: 'tool', id };
@@ -1651,9 +1701,33 @@ function upgradeTool(id: ToolId): void {
   if (mat.wood) Bag.removeFromBag(state.bag, 'mat.wood', mat.wood);
   if (mat.stone) Bag.removeFromBag(state.bag, 'mat.stone', mat.stone);
   st.tier = next;
+  // 升级等于换了把新工具，耐久修满到新等级上限
+  st.durability = toolMaxDurability(next);
 
   Sound.play('levelup');
   UI.toast(`${TOOLS[id].name} 升级为 ${tierInfo(next).name}${TOOLS[id].name}！`, 'good');
+  UI.resetHotbarCache();
+  save();
+  openShop();
+}
+
+/** 花钱把工具修满 */
+function repairTool(id: ToolId): void {
+  const st = state.tools[id];
+  if (!st || !st.owned) return;
+  const max = toolMaxDurability(st.tier);
+  if (st.durability >= max) {
+    UI.toast('这把工具还好好的', 'bad');
+    return;
+  }
+  const rc = repairCost(st.tier);
+  if (state.coins < rc) { UI.toast('金币不够', 'bad'); return; }
+
+  state.coins -= rc;
+  st.durability = max;
+
+  Sound.play('levelup');
+  UI.toast(`${TOOLS[id].name}修好了！`, 'good');
   UI.resetHotbarCache();
   save();
   openShop();
@@ -2461,6 +2535,7 @@ function setupTitle(): void {
          <li>拿错工具时，只要快捷栏里有对的，会自动换上</li>
          <li>斧头连砍三下放倒一棵树，镐要两下敲碎岩石</li>
          <li>升级工具需要 木材 / 石材，所以要先去砍树挖石</li>
+          <li><b>耐久</b>：每次用工具干活会磨损，耐久见底就坏了。订购箱里点「修」花金币修满</li>
          <li>钓鱼：抛竿 → 等浮标动 → 咬钩瞬间按空格 → 打一个词收线，反应越快星级越高</li>
        </ul>
        <h3>动物</h3>

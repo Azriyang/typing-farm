@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { CFG } from './config';
-import { TOOLS } from './tools';
+import { TOOLS, toolMaxDurability, durabilityRatio, DURABILITY_WARN } from './tools';
 import { getDef } from './items';
 import { usedSlots } from './items';
 import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON, festivalOfDay } from './seasons';
@@ -140,7 +140,11 @@ let lastHotbarKey = '';
 
 export function renderHotbar(state: GameState, onSelect: (i: number) => void): void {
   const key = state.hotbar
-    .map((r) => (r ? (r.type === 'tool' ? `t:${r.id}:${state.tools[r.id].tier}` : `s:${r.id}`) : '-'))
+    .map((r) => (r
+      ? (r.type === 'tool'
+          ? `t:${r.id}:${state.tools[r.id].tier}:${Math.ceil(state.tools[r.id].durability)}`
+          : `s:${r.id}`)
+      : '-'))
     .join(',') + '#' + state.equipSlot;
   if (key === lastHotbarKey) return;
   lastHotbarKey = key;
@@ -153,10 +157,14 @@ export function renderHotbar(state: GameState, onSelect: (i: number) => void): v
     let icon = '';
     let name = '';
     let count = '';
+    let durBar = '';
     if (ref && ref.type === 'tool') {
       const t = state.tools[ref.id];
       icon = TOOLS[ref.id].icon;
       name = `${['铜', '银', '金', '秘银'][t.tier - 1]}${TOOLS[ref.id].name}`;
+      const ratio = durabilityRatio(t.durability, t.tier);
+      const cls = ratio <= 0 ? 'dead' : ratio < DURABILITY_WARN ? 'low' : '';
+      durBar = `<span class="dur-bar ${cls}" title="耐久 ${Math.ceil(t.durability)}/${toolMaxDurability(t.tier)}"><i style="width:${(ratio * 100).toFixed(0)}%"></i></span>`;
     } else if (ref && ref.type === 'seed') {
       const def = getDef(ref.id);
       icon = def?.icon ?? '·';
@@ -166,7 +174,7 @@ export function renderHotbar(state: GameState, onSelect: (i: number) => void): v
       count = String(n);
     }
     el.innerHTML = `<span class="k">${i + 1}</span><span class="ic">${icon}</span>
-      <span class="nm">${name}</span><span class="ct">${count}</span>`;
+      <span class="nm">${name}</span><span class="ct">${count}</span>${durBar}`;
     el.addEventListener('click', () => onSelect(i));
     box.appendChild(el);
   });

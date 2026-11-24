@@ -37,6 +37,7 @@ import {
 import { findPath, nearestWalkable, simplifyPath } from './pathfind';
 import { rollRequests } from './requests';
 import { RELICS, relicById, newlyUnlocked } from './relics';
+import { ROMANCE, nextEvent, canConfess, isRomanceable } from './romance';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
@@ -76,7 +77,7 @@ let lastTs = 0;
 const keys = new Set<string>();
 
 interface Pending {
-  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'breed' | 'chat';
+  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'breed' | 'chat' | 'romance';
   tool: ToolId | null;
   plots: number[];
   nodeKey: string | null;
@@ -84,6 +85,8 @@ interface Pending {
   animalId?: string;
   /** 配种对象 */
   partnerId?: string;
+  /** 恋爱动作的类型 */
+  romanceMode?: 'event' | 'confess';
   villagerId?: string;
   stamina: number;
   time: number;
@@ -188,6 +191,14 @@ const session = new TypingSession({
       return;
     }
 
+    if (p.kind === 'romance') {
+      const v = p.villagerId ? villagerById(state, p.villagerId) : null;
+      if (v && p.romanceMode) finishRomance(v, p.romanceMode);
+      spend(p);
+      UI.flashSuccess();
+      return;
+    }
+
     if (p.kind === 'chat') {
       if (r.perfect) {
         state.combo++;
@@ -233,6 +244,13 @@ const session = new TypingSession({
       if (state.stamina <= 0) { faint(); return; }
       const a = p.animalId ? animalById(state, p.animalId) : null;
       if (a && !UI.isModalOpen()) openAnimalPanel(a);
+      return;
+    }
+
+    if (p && p.kind === 'romance') {
+      state.stamina = Math.max(0, state.stamina - failLoss(p));
+      UI.toast('话到嘴边又咽回去了…', 'bad');
+      if (state.stamina <= 0) faint();
       return;
     }
 
@@ -1732,6 +1750,113 @@ function openSchool(): void {
   );
 }
 
+/* ---------------- 恋爱线 ---------------- */
+
+/** 有一段心事想说 */
+function romancePending(v: Villager): boolean {
+  const ev = nextEvent(v.id, hearts(v.friendship), v.romanceSeen ?? 0);
+  return !!ev && !v.talkedToday;
+}
+
+/** 可以告白了 */
+function romanceConfessable(v: Villager): boolean {
+  return !v.romanceLover && canConfess(v.id, hearts(v.friendship), v.romanceSeen ?? 0);
+}
+
+/** 播放一段心事：先给她的话，再打一句你的回应 */
+function startRomanceEvent(v: Villager): void {
+  if (session.active) return;
+  const ev = nextEvent(v.id, hearts(v.friendship), v.romanceSeen ?? 0);
+  if (!ev) return;
+  const def = VILLAGER_DEFS[v.id];
+  if (!def) return;
+
+  const intro = ev.intro.map((l) => `<p class="relic-line">${l}</p>`).join('');
+  UI.showModal(
+    `${def.icon} ${def.name}`,
+    `<div class="relic-text">${intro}</div>
+     <p class="dim">打出一句回应。</p>`,
+    [
+      { label: '回应她', cls: 'green', onClick: () => beginRomanceTyping(v, 'event') },
+      { label: '下次再说', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+}
+
+/** 真正的打字环节（事件与告白共用） */
+function beginRomanceTyping(v: Villager, mode: 'event' | 'confess'): void {
+  const def = VILLAGER_DEFS[v.id];
+  const script = ROMANCE[v.id];
+  if (!def || !script) return;
+
+  let word: Word;
+  if (mode === 'event') {
+    const ev = nextEvent(v.id, hearts(v.friendship), v.romanceSeen ?? 0);
+    if (!ev) return;
+    word = { text: ev.say.en, zh: ev.say.zh, diff: difficulty(ev.say.en) };
+  } else {
+    word = { text: script.love.confess.en, zh: script.love.confess.zh, diff: difficulty(script.love.confess.en) };
+  }
+
+  const cost = { stamina: 1, time: 15 };
+  if (state.stamina < cost.stamina) { UI.toast('太累了，说不出话', 'bad'); return; }
+
+  pending = {
+    kind: 'romance', tool: null, plots: [], nodeKey: null,
+    villagerId: v.id, stamina: cost.stamina, time: cost.time,
+    label: mode === 'event' ? `和 ${def.name} 说话` : `向 ${def.name} 表明心意`,
+    romanceMode: mode
+  };
+  currentLabel = pending.label;
+  UI.hideModal();
+  UI.resetTypingCache();
+  const dp = typingParams(0, 1);
+  session.start([word], dp.tolerance, dp.timeMult, performance.now());
+}
+
+/** 打字完成后的收尾 */
+function finishRomance(v: Villager, mode: 'event' | 'confess'): void {
+  const def = VILLAGER_DEFS[v.id];
+  const script = ROMANCE[v.id];
+  if (!def || !script) return;
+
+  if (mode === 'event') {
+    const ev = nextEvent(v.id, hearts(v.friendship), v.romanceSeen ?? 0);
+    v.romanceSeen = (v.romanceSeen ?? 0) + 1;
+    v.talkedToday = true;
+    addFriendship(v, 10);   // 心事本身就是更深的交流
+    state.stamina = Math.max(0, state.stamina - 1);
+    state.time += 15;
+
+    const outro = (ev?.outro ?? []).map((l) => `<p class="relic-line">${l}</p>`).join('');
+    UI.showModal(
+      `${def.icon} ${def.name}`,
+      `<div class="relic-text">${outro}</div>
+       <p class="dim">她好像更愿意和你说话了。</p>`,
+      [{ label: '好', cls: 'green', onClick: () => UI.hideModal() }]
+    );
+    save();
+    return;
+  }
+
+  // 告白
+  v.romanceLover = true;
+  v.talkedToday = true;
+  addFriendship(v, 20);
+  state.stamina = Math.max(0, state.stamina - 1);
+  state.time += 15;
+
+  const accept = script.love.accept.map((l) => `<p class="relic-line">${l}</p>`).join('');
+  UI.showModal(
+    `${def.icon} ${def.name}`,
+    `<div class="relic-text">${accept}</div>
+     <p class="dim">${script.love.after}</p>`,
+    [{ label: '牵住她的手', cls: 'green', onClick: () => UI.hideModal() }]
+  );
+  Sound.play('levelup');
+  save();
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -2138,6 +2263,13 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
     ? `<div class="bday-banner">🎂 今天是 ${def.name} 的生日！<span class="bday-sub">送礼好感 ×${BIRTHDAY_GIFT_MULT}</span></div>`
     : '';
 
+  // 恋爱线：有心事 / 可告白
+  const hasEvent = isRomanceable(v.id) && romancePending(v);
+  const canLove = isRomanceable(v.id) && romanceConfessable(v);
+  const loverTag = v.romanceLover
+    ? `<div class="lover-banner">💗 你们在一起了</div>`
+    : '';
+
   const body = `
     <div class="villager-head">
       <span class="v-icon">${def.icon}</span>
@@ -2146,22 +2278,29 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
         <div class="v-hearts">${heartsStr}</div>
       </div>
     </div>
+    ${loverTag}
     ${bdayTag}
     ${speech}
     <div class="animal-status">
       <div class="as-row"><span class="k">聊天</span><span class="v">${v.talkedToday ? '✓ 今天聊过了' : '✗ 还没聊'}</span></div>
       <div class="as-row"><span class="k">送礼</span><span class="v">${v.giftedToday ? '✓ 今天送过了' : isBday ? '✗ 还没送（今天翻倍）' : '✗ 还没送'}</span></div>
     </div>
+    ${hasEvent ? '<p class="dim">她看起来有心事，好像想和你说点什么。</p>' : ''}
+    ${canLove ? '<p class="dim">你们之间，好像只差一句话了。</p>' : ''}
     <p class="dim">打出${def.name}说的话就能聊起来。送礼时留意对方的反应，就知道送得对不对。</p>`;
-  UI.showModal(
-    `${def.icon} ${def.name}`,
-    body,
-    [
-      { label: v.talkedToday ? '已聊过' : '聊天', cls: v.talkedToday ? 'ghost' : 'green', onClick: () => { if (!v.talkedToday) { UI.hideModal(); startChat(v); } } },
-      { label: v.giftedToday ? '已送礼' : '送礼', cls: v.giftedToday ? 'ghost' : isBday ? 'green' : '', onClick: () => { if (!v.giftedToday) { UI.hideModal(); openGiftPanel(v); } } },
-      { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
-    ]
-  );
+
+  const actions: UI.ModalAction[] = [];
+  if (hasEvent) {
+    actions.push({ label: '听她说', cls: 'green', onClick: () => { UI.hideModal(); startRomanceEvent(v); } });
+  }
+  if (canLove) {
+    actions.push({ label: '表明心意', cls: 'green', onClick: () => { UI.hideModal(); beginRomanceTyping(v, 'confess'); } });
+  }
+  actions.push({ label: v.talkedToday ? '已聊过' : '聊天', cls: v.talkedToday ? 'ghost' : hasEvent ? 'ghost' : 'green', onClick: () => { if (!v.talkedToday) { UI.hideModal(); startChat(v); } } });
+  actions.push({ label: v.giftedToday ? '已送礼' : '送礼', cls: v.giftedToday ? 'ghost' : isBday ? 'green' : '', onClick: () => { if (!v.giftedToday) { UI.hideModal(); openGiftPanel(v); } } });
+  actions.push({ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() });
+
+  UI.showModal(`${def.icon} ${def.name}`, body, actions);
 }
 
 function startChat(v: Villager): void {

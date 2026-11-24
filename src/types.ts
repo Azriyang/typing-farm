@@ -180,6 +180,9 @@ export interface Villager {
   lookT?: number;
   /** 当前目标点标识；换了地方且距离很远时直接到场（视为从别处赶来） */
   spotKey?: string;
+  /** 恋爱进度：看过几个事件 / 是否已告白 */
+  romanceSeen?: number;
+  romanceLover?: boolean;
   /** 寻路得到的路径点 */
   path?: Array<{ tx: number; ty: number }> | null;
 }

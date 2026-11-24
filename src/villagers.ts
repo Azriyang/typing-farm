@@ -32,17 +32,17 @@ export const SPOTS = {
   /** 池塘边，小渔钓鱼 */
   pondBank: { tx: 19, ty: 17, radius: 1.8 },
   /** 小镇广场 */
-  plaza: { tx: 52, ty: 12, radius: 3 },
+  plaza: { tx: 52, ty: 11, radius: 3 },
   /** 酒馆门口 */
-  tavernFront: { tx: 41, ty: 6, radius: 1.4 },
+  tavernFront: { tx: 40, ty: 6, radius: 1.4 },
   /** 铁匠铺门口 */
-  smithFront: { tx: 46, ty: 6, radius: 1.4 },
+  smithFront: { tx: 45, ty: 6, radius: 1.4 },
   /** 诊所门口 */
-  clinicFront: { tx: 51, ty: 6, radius: 1.4 },
+  clinicFront: { tx: 49, ty: 6, radius: 1.4 },
   /** 学堂门口 */
-  schoolFront: { tx: 56, ty: 6, radius: 1.4 },
+  schoolFront: { tx: 54, ty: 6, radius: 1.4 },
   /** 钟楼下 */
-  towerFoot: { tx: 60, ty: 6, radius: 1.2 },
+  towerFoot: { tx: 59, ty: 6, radius: 1.2 },
   /** 杂货店门口 */
   shopFront: { tx: 36, ty: 6, radius: 1.4 },
   /** 镇口，进出小镇的路 */

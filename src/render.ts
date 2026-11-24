@@ -138,6 +138,22 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
       c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
 
+      // 大尺度色块：让整片草地不是均匀一色（按 3×3 格为单位）
+      const patch = hash(Math.floor(tx / 3) * 31, Math.floor(ty / 3) * 47);
+      if (patch > 0.72) {
+        c.fillStyle = 'rgba(28,58,20,.13)';
+        c.fillRect(x, y, TILE, TILE);
+      } else if (patch < 0.22) {
+        c.fillStyle = 'rgba(200,215,140,.10)';
+        c.fillRect(x, y, TILE, TILE);
+      }
+      // 更细的一层：单格明暗微差，破掉网格感
+      const micro = hash(tx * 13, ty * 7);
+      if (micro > 0.85) {
+        c.fillStyle = 'rgba(20,45,15,.07)';
+        c.fillRect(x, y, TILE, TILE);
+      }
+
       // 草叶：暗底 + 亮顶，营造细密纹理
       for (let i = 0; i < 9; i++) {
         const rr = hash(tx * 7 + i, ty * 13 + i * 3);
@@ -1210,12 +1226,64 @@ function drawTownBuildings(c: Ctx, nowMs = 0) {
     c.beginPath();
     c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
     c.closePath(); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.16)';
+
+    // 瓦片纹理：一道道横向压痕 + 左右两坡的分界
+    c.save();
     c.beginPath();
-    c.moveTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w * 0.6, y + 26); c.lineTo(x + w * 0.35, y + 26);
+    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
+    c.closePath();
+    c.clip();
+    for (let i = 0; i < 7; i++) {
+      const ly = y - 2 + i * 4.2;
+      c.fillStyle = `rgba(0,0,0,${0.06 + i * 0.012})`;
+      c.fillRect(x - 8, ly, w + 16, 1.4);
+    }
+    // 竖向瓦缝
+    for (let i = 0; i < Math.ceil(w / 9); i++) {
+      c.fillStyle = 'rgba(0,0,0,.05)';
+      c.fillRect(x + i * 9 + 2, y - 4, 1, 32);
+    }
+    c.restore();
+
+    // 受光面（右坡更亮）与阴面（左坡更暗）
+    c.fillStyle = 'rgba(0,0,0,.14)';
+    c.beginPath();
+    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.25, y + 26);
     c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.12)';
+    c.beginPath();
+    c.moveTo(x + w + 6, y + 26); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w * 0.75, y + 26);
+    c.closePath(); c.fill();
+
     c.fillStyle = 'rgba(0,0,0,.2)';
     c.fillRect(x - 6, y + 23, w + 12, 4);
+
+    // 烟囱（部分建筑有；商店和学堂不冒烟）
+    if (b.kind === 'house' || b.kind === 'tavern' || b.kind === 'smith' || b.kind === 'clinic') {
+      const chX = x + w * 0.68;
+      c.fillStyle = '#7d5a48';
+      c.fillRect(chX, y - 14, 11, 16);
+      c.fillStyle = '#9a7260';
+      c.fillRect(chX, y - 14, 11, 3);
+      c.fillStyle = '#5a3f32';
+      c.fillRect(chX + 2, y - 12, 7, 2);
+      // 砖缝
+      c.fillStyle = 'rgba(0,0,0,.18)';
+      c.fillRect(chX + 2, y - 8, 7, 1);
+      c.fillRect(chX + 2, y - 4, 7, 1);
+    }
+
+    // 门廊 / 雨棚：只在宽一点的建筑上
+    if (b.w >= 4) {
+      const doorX = x + w / 2;
+      const canopyY = north ? y + h - 42 : y + 14;
+      c.fillStyle = 'rgba(0,0,0,.18)';
+      c.fillRect(doorX - 20, canopyY + 6, 40, 3);
+      c.fillStyle = b.roof;
+      c.fillRect(doorX - 22, canopyY, 44, 6);
+      c.fillStyle = 'rgba(255,255,255,.16)';
+      c.fillRect(doorX - 22, canopyY, 44, 2);
+    }
 
     // 门
     const doorY = north ? y + h - 34 : y + 22;

@@ -176,22 +176,38 @@ export interface TownBuilding {
   door?: { dx: number; dy: number };
 }
 
-/** 北侧一条街 + 南侧民宅，中间是主街与广场 */
+/** 北侧一条街 + 南侧民宅，中间是主街与广场。刻意错落：高度、宽度、退进都不齐 */
 export const TOWN_BUILDINGS: TownBuilding[] = [
-  // ── 北侧（y2-5）──
-  { x: 34, y: 2, w: 4, h: 4, kind: 'store',  roof: '#4a8fbe' },
-  { x: 39, y: 2, w: 4, h: 4, kind: 'tavern', roof: '#c9563f', door: { dx: 2, dy: 3 } },
-  { x: 44, y: 2, w: 4, h: 4, kind: 'smith',  roof: '#8a8a8a', door: { dx: 2, dy: 3 } },
-  { x: 49, y: 2, w: 4, h: 4, kind: 'clinic', roof: '#e8e2d4', door: { dx: 2, dy: 3 } },
-  { x: 54, y: 2, w: 4, h: 4, kind: 'school', roof: '#a9743f', door: { dx: 2, dy: 3 } },
-  { x: 59, y: 1, w: 3, h: 5, kind: 'tower',  roof: '#6b6b6b' },
-  // ── 南侧（y14-17）──
+  // ── 北侧：门统一在 y5（玩家站 y6 面朝上）──
+  { x: 34, y: 2, w: 4, h: 4, kind: 'store',  roof: '#4a8fbe', door: { dx: 2, dy: 3 } },
+  { x: 39, y: 3, w: 3, h: 3, kind: 'tavern', roof: '#c9563f', door: { dx: 1, dy: 2 } },   // 矮一截，退进
+  { x: 43, y: 2, w: 4, h: 4, kind: 'smith',  roof: '#8a8a8a', door: { dx: 2, dy: 3 } },
+  { x: 48, y: 3, w: 3, h: 3, kind: 'clinic', roof: '#e8e2d4', door: { dx: 1, dy: 2 } },   // 矮一截
+  { x: 52, y: 2, w: 5, h: 4, kind: 'school', roof: '#a9743f', door: { dx: 2, dy: 3 } },   // 宽一截
+  { x: 58, y: 0, w: 3, h: 6, kind: 'tower',  roof: '#6b6b6b' },                            // 钟楼最高
+  // ── 南侧：门统一在 y14 / y15（玩家站上一行面朝下）──
   { x: 34, y: 14, w: 4, h: 4, kind: 'house', roof: '#c9743f' },
-  { x: 39, y: 14, w: 4, h: 4, kind: 'house', roof: '#6fae4e' },
-  { x: 44, y: 14, w: 4, h: 4, kind: 'house', roof: '#b06a8f' },
-  { x: 49, y: 14, w: 4, h: 4, kind: 'house', roof: '#c9a23f' },
-  { x: 54, y: 14, w: 4, h: 4, kind: 'house', roof: '#7a8fb0' },
-  { x: 59, y: 14, w: 4, h: 4, kind: 'house', roof: '#9a7a5a' }
+  { x: 39, y: 15, w: 4, h: 3, kind: 'house', roof: '#6fae4e' },   // 退后一格
+  { x: 44, y: 14, w: 3, h: 4, kind: 'house', roof: '#b06a8f' },   // 窄一点
+  { x: 48, y: 15, w: 4, h: 3, kind: 'house', roof: '#c9a23f' },   // 退后
+  { x: 53, y: 14, w: 5, h: 4, kind: 'house', roof: '#7a8fb0' },   // 宽宅
+  { x: 59, y: 15, w: 3, h: 3, kind: 'house', roof: '#9a7a5a' }    // 小屋
+];
+
+/** 小巷：从主街通向各家门前的短竖路（让镇子不是两排平行盒子） */
+export const TOWN_ALLEYS: Array<{ x: number; y0: number; y1: number }> = [
+  { x: 36, y0: 6, y1: 7 },   // 杂货店前
+  { x: 40, y0: 6, y1: 7 },   // 酒馆前
+  { x: 45, y0: 6, y1: 7 },   // 铁匠铺前
+  { x: 49, y0: 6, y1: 7 },   // 诊所前
+  { x: 54, y0: 6, y1: 7 },   // 学堂前
+  { x: 51, y0: 8, y1: 9 },   // 广场入口
+  { x: 36, y0: 13, y1: 14 }, // 南侧民宅前
+  { x: 41, y0: 13, y1: 15 },
+  { x: 45, y0: 13, y1: 14 },
+  { x: 50, y0: 13, y1: 15 },
+  { x: 55, y0: 13, y1: 14 },
+  { x: 60, y0: 13, y1: 15 }
 ];
 
 /** 广场喷泉（地标，挡路） */
@@ -416,16 +432,38 @@ function buildMineTerrain(): void {
 function buildFarmTerrain(): void {
   terrain.fill(T.GRASS);
 
-  // 外圈树墙（纯装饰，不可砍）
+  /** 确定性噪声：同一坐标永远同一值，保证底图可重绘 */
+  const noise = (x: number, y: number): number => {
+    let n = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+    n = (n ^ (n >>> 13)) | 0;
+    n = Math.imul(n, 1274126177) | 0;
+    n = (n ^ (n >>> 16)) >>> 0;
+    return n / 4294967296;
+  };
+
+  // 外圈树墙：最外一圈封闭，第二圈用噪声散开（不再像栅栏）
   for (let x = 0; x < MAP_W; x++) {
     set(x, 0, T.TREE);
     set(x, MAP_H - 1, T.TREE);
-    if (x % 3 === 0) { set(x, 1, T.TREE); set(x, MAP_H - 2, T.TREE); }
   }
   for (let y = 0; y < MAP_H; y++) {
     set(0, y, T.TREE);
     set(MAP_W - 1, y, T.TREE);
-    if (y % 3 === 1) { set(1, y, T.TREE); set(MAP_W - 2, y, T.TREE); }
+  }
+  for (let x = 1; x < MAP_W - 1; x++) {
+    if (noise(x, 1) > 0.42) set(x, 1, T.TREE);
+    if (noise(x, MAP_H - 2) > 0.42) set(x, MAP_H - 2, T.TREE);
+  }
+  for (let y = 1; y < MAP_H - 1; y++) {
+    if (noise(1, y) > 0.42) set(1, y, T.TREE);
+    if (noise(MAP_W - 2, y) > 0.42) set(MAP_W - 2, y, T.TREE);
+  }
+  // 零散的树（农场外围成林，小镇区域不放）
+  for (let y = 2; y < MAP_H - 2; y++) {
+    for (let x = 2; x < MAP_W - 2; x++) {
+      if (x >= TOWN_X - 2) continue;             // 小镇区域留空
+      if (noise(x * 3, y * 5) > 0.93) set(x, y, T.TREE);
+    }
   }
 
   // 池塘
@@ -457,8 +495,17 @@ function buildFarmTerrain(): void {
   // 农田（只铺第一块；第二块买地后由 unlockArea 铺上）
   setRect(FARM_AREAS[0].x, FARM_AREAS[0].y, FARM_AREAS[0].cols, FARM_AREAS[0].rows, T.SOIL);
 
-  // 小镇中央广场（主街南侧）
-  setRect(46, 9, 13, 5, T.PATH);
+  // 小镇中央广场（不规则：中间宽、两端窄）
+  setRect(47, 10, 11, 3, T.PATH);
+  setRect(49, 9, 7, 1, T.PATH);
+  setRect(50, 13, 5, 1, T.PATH);
+
+  // 小巷：把主街和各家门前连起来，镇子不再是两排平行盒子
+  for (const a of TOWN_ALLEYS) {
+    for (let y = a.y0; y <= a.y1; y++) {
+      if (tileAt(a.x, y) === T.GRASS) set(a.x, y, T.PATH);
+    }
+  }
 
   // 花丛（可走过）
   const flowers: Array<[number, number]> = [

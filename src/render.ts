@@ -525,6 +525,38 @@ function drawFurniture(c: Ctx, scene: string) {
         c.fillRect(x + 1, y + h - 6, w - 2, 4);
         break;
       }
+      case 'stove': {
+        // 灶台：石砌灶身 + 铁锅 + 火光
+        c.fillStyle = '#5a5450';
+        c.fillRect(x + 2, y + 10, w - 4, h - 12);
+        c.fillStyle = '#6e6862';
+        c.fillRect(x + 4, y + 12, w - 8, h - 18);
+        // 灶口火光
+        c.fillStyle = '#2a201c';
+        c.fillRect(x + 10, y + 20, 16, 10);
+        c.fillStyle = '#e8823a';
+        c.fillRect(x + 12, y + 24, 12, 5);
+        c.fillStyle = '#f5c04a';
+        c.fillRect(x + 14, y + 26, 8, 3);
+        // 铁锅
+        c.fillStyle = '#3d3a38';
+        c.beginPath();
+        c.ellipse(x + w / 2, y + 10, 15, 6, 0, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = '#4e4a47';
+        c.beginPath();
+        c.ellipse(x + w / 2, y + 9, 13, 4.5, 0, 0, Math.PI * 2);
+        c.fill();
+        // 锅里的汤
+        c.fillStyle = '#c9a44e';
+        c.beginPath();
+        c.ellipse(x + w / 2, y + 9, 10, 3.4, 0, 0, Math.PI * 2);
+        c.fill();
+        // 锅把手
+        c.fillStyle = '#3d3a38';
+        c.fillRect(x + w / 2 + 13, y + 8, 5, 3);
+        break;
+      }
       case 'bench': {
         // 加工台：木质操作台 + 台面上的罐子与工具
         c.fillStyle = '#5a3c22';

@@ -30,6 +30,10 @@ import {
   CRAFT_RECIPES, recipeById, absoluteMinutes, outName, inputText, remainingText
 } from './craft';
 import {
+  COOK_RECIPES, cookRecipeById, isFood, foodStamina, cookInputText, cookOutName,
+  inputValue, TIER_LABEL
+} from './cook';
+import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
 import {
@@ -1254,6 +1258,136 @@ function collectCraft(): void {
   openCraftPanel();
 }
 
+/* ---------------- 灶台 / 烹饪 ---------------- */
+
+function openCookPanel(): void {
+  // 背包里现有的料理，可以随时吃掉
+  const foods: Array<{ idx: number; id: string; name: string; icon: string; qty: number; heal: number }> = [];
+  state.bag.forEach((s, idx) => {
+    if (!s || !isFood(s.id)) return;
+    const def = getDef(s.id);
+    foods.push({
+      idx, id: s.id,
+      name: def?.name ?? s.id,
+      icon: def?.icon ?? '🍽️',
+      qty: s.qty,
+      heal: foodStamina(s.id)
+    });
+  });
+
+  const foodHtml = foods.length === 0
+    ? `<p class="dim">背包里还没有做好的料理。</p>`
+    : `<div class="cook-list">${foods.map((f) => `
+        <div class="cook-row">
+          <div class="ck-main">
+            <div class="nm">${f.icon} ${f.name} <span class="dm">×${f.qty}</span></div>
+            <div class="dt">吃掉回 <b class="heal">${f.heal}</b> 体力</div>
+          </div>
+          <button class="btn small green" data-eat="${f.idx}" ${state.stamina >= CFG.STAMINA_MAX ? 'disabled' : ''}>吃</button>
+        </div>`).join('')}</div>`;
+
+  const tiers: Array<'basic' | 'nice' | 'deluxe'> = ['basic', 'nice', 'deluxe'];
+  const recipeHtml = tiers.map((t) => {
+    const list = COOK_RECIPES.filter((r) => r.tier === t);
+    if (list.length === 0) return '';
+    const rows = list.map((r) => {
+      const have = r.input.every((i) => bagCount(i.id) >= i.qty);
+      const out = getDef(r.out);
+      const gross = (out?.price ?? 0) - inputValue(r);
+      return `<div class="cook-row${have ? '' : ' cant'}">
+        <div class="ck-main">
+          <div class="nm">${out?.icon ?? ''} ${out?.name ?? r.out} <span class="dm">${cookInputText(r)}</span></div>
+          <div class="dt">售价 ${out?.price ?? 0}G
+            <span class="cr-gain up">+${gross}G</span>
+            · 回 <b class="heal">${r.stamina}</b> 体力</div>
+        </div>
+        <button class="btn small" data-cook="${r.id}" ${have ? '' : 'disabled'}>${have ? '做' : '缺料'}</button>
+      </div>`;
+    }).join('');
+    return `<h4 class="cook-tier">${TIER_LABEL[t]}</h4><div class="cook-list">${rows}</div>`;
+  }).join('');
+
+  UI.showModal(
+    '灶台',
+    `<p class="dim">做饭要花点时间，但料理不仅能卖钱，还能<b>吃掉回体力</b>。</p>
+     <h4 class="cook-tier">🍽️ 背包里的料理</h4>
+     ${foodHtml}
+     <h4 class="cook-tier">📖 菜谱</h4>
+     ${recipeHtml}`,
+    [{ label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-cook]').forEach((el) => {
+    el.addEventListener('click', () => cookDish(el.dataset.cook as string));
+  });
+  document.querySelectorAll<HTMLElement>('[data-eat]').forEach((el) => {
+    el.addEventListener('click', () => eatFood(Number(el.dataset.eat)));
+  });
+}
+
+/** 做一道菜：消耗原料，产出料理（品质取原料平均） */
+function cookDish(recipeId: string): void {
+  const r = cookRecipeById(recipeId);
+  if (!r) return;
+  for (const i of r.input) {
+    if (bagCount(i.id) < i.qty) {
+      UI.toast(`${getDef(i.id)?.name ?? i.id} 不够`, 'bad');
+      return;
+    }
+  }
+  if (state.stamina < 3) { UI.toast('太累了，做不动', 'bad'); return; }
+
+  // 品质：原料平均，四舍五入
+  let qSum = 0;
+  let qCount = 0;
+  for (const i of r.input) {
+    let need = i.qty;
+    for (const s of state.bag) {
+      if (!s || s.id !== i.id || need <= 0) continue;
+      const take = Math.min(need, s.qty);
+      qSum += (s.quality ?? 1) * take;
+      qCount += take;
+      need -= take;
+    }
+  }
+  const quality = qCount > 0 ? Math.max(1, Math.min(5, Math.round(qSum / qCount))) : 1;
+
+  const stack = Bag.makeStack(r.out, 1, quality);
+  if (!Bag.canFit(state.bag, stack)) { UI.toast('背包满了', 'bad'); return; }
+
+  for (const i of r.input) Bag.removeFromBag(state.bag, i.id, i.qty);
+  Bag.addToBag(state.bag, stack);
+  state.stamina -= 3;
+  state.time += 20;
+
+  Sound.play('levelup');
+  UI.toast(`做好了 ${cookOutName(r)}（${'★'.repeat(quality)}）`, 'good');
+  UI.resetHotbarCache();
+  save();
+  openCookPanel();
+}
+
+/** 吃料理回体力 */
+function eatFood(bagIndex: number): void {
+  const s = state.bag[bagIndex];
+  if (!s || !isFood(s.id)) return;
+  const heal = foodStamina(s.id);
+  if (heal <= 0) return;
+  if (state.stamina >= CFG.STAMINA_MAX) {
+    UI.toast('体力是满的，吃不下', 'bad');
+    return;
+  }
+  const def = getDef(s.id);
+  Bag.removeFromBag(state.bag, s.id, 1, s.quality);
+  state.stamina = Math.min(CFG.STAMINA_MAX, state.stamina + heal);
+  state.time += 10;
+  Sound.play('coin');
+  UI.toast(`吃了 ${def?.name ?? '料理'}，体力 +${heal}`, 'good');
+  UI.resetHotbarCache();
+  save();
+  openCookPanel();
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -1267,6 +1401,7 @@ function tryInteract(): void {
   if (tgt?.kind === 'bed') { askSleep(); return; }
   if (tgt?.kind === 'shelf') { openDex(); return; }
   if (tgt?.kind === 'bench') { openCraftPanel(); return; }
+  if (tgt?.kind === 'stove') { openCookPanel(); return; }
 
   // 优先：面朝的村民（只在农场有村民）
   if (!isIndoor(state.scene)) {

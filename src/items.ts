@@ -113,6 +113,17 @@ reg({ id: 'craft.yarn', kind: 'product', name: '毛线', icon: '🪡', max: 99, 
 reg({ id: 'craft.jam', kind: 'product', name: '草莓酱', icon: '🍓', max: 99, desc: '2 份草莓熬成', price: 1900 });
 reg({ id: 'craft.ketchup', kind: 'product', name: '番茄酱', icon: '🥫', max: 99, desc: '2 份番茄熬成', price: 880 });
 
+/* ---------------- 料理（灶台产出，可吃可卖） ---------------- */
+
+reg({ id: 'food.soup', kind: 'food', name: '蔬菜汤', icon: '🍲', max: 99, desc: '吃掉回 25 体力', price: 380 });
+reg({ id: 'food.friedegg', kind: 'food', name: '煎蛋', icon: '🍳', max: 99, desc: '吃掉回 20 体力', price: 210 });
+reg({ id: 'food.mash', kind: 'food', name: '土豆泥', icon: '🥣', max: 99, desc: '吃掉回 25 体力', price: 440 });
+reg({ id: 'food.cheesepotato', kind: 'food', name: '奶酪焗土豆', icon: '🧀', max: 99, desc: '吃掉回 40 体力', price: 1070 });
+reg({ id: 'food.pasta', kind: 'food', name: '番茄意面', icon: '🍝', max: 99, desc: '吃掉回 45 体力', price: 1850 });
+reg({ id: 'food.jamtoast', kind: 'food', name: '草莓酱吐司', icon: '🍞', max: 99, desc: '吃掉回 35 体力', price: 2950 });
+reg({ id: 'food.feast', kind: 'food', name: '丰收大餐', icon: '🍱', max: 99, desc: '吃掉回 60 体力', price: 2300 });
+reg({ id: 'food.creamsoup', kind: 'food', name: '奶油浓汤', icon: '🍜', max: 99, desc: '吃掉回 50 体力', price: 1630 });
+
 /* ---------------- 查询 ---------------- */
 
 export function getDef(id: string): ItemDef | undefined {

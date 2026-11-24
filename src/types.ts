@@ -63,7 +63,7 @@ export interface Word {
 
 /* ---------------- 物品 ---------------- */
 
-export type ItemKind = 'seed' | 'crop' | 'material' | 'tool' | 'fish' | 'product' | 'flower';
+export type ItemKind = 'seed' | 'crop' | 'material' | 'tool' | 'fish' | 'product' | 'flower' | 'food';
 
 export interface ItemDef {
   id: string;

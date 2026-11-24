@@ -445,13 +445,18 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
   const bob = a.moving ? Math.sin(nowMs / 120 + a.x) * 1.2 : 0;
   const x = a.x, y = a.y + bob;
   const faceLeft = a.dir === 'left';
+  // 幼崽整体缩小
+  const scale = a.adult ? 1 : 0.62;
 
   c.fillStyle = 'rgba(60,40,20,.22)';
-  c.beginPath(); c.ellipse(x, a.y + 2, a.kind === 'cow' ? 16 : 9, 4, 0, 0, Math.PI * 2); c.fill();
+  c.beginPath();
+  c.ellipse(x, a.y + 2, (a.kind === 'cow' ? 16 : 9) * scale, 4 * scale, 0, 0, Math.PI * 2);
+  c.fill();
 
   c.save();
   c.translate(x, y);
   if (faceLeft) c.scale(-1, 1);
+  if (scale !== 1) c.scale(scale, scale);
 
   if (a.kind === 'chicken') {
     // 身体
@@ -532,7 +537,17 @@ function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
   // 状态提示
   const def = ANIMAL_DEFS[a.kind];
   const tall = a.kind === 'cow' ? 34 : a.kind === 'sheep' ? 36 : 26;
-  if (isProductReady(a)) {
+  if (a.pregnantDays > 0) {
+    // 怀孕：飘一颗心
+    c.fillStyle = '#e06080';
+    c.font = `${13 + Math.sin(nowMs / 400) * 1.5}px serif`;
+    c.fillText('♥', x - 5, y - tall + 4);
+  } else if (!a.adult) {
+    // 幼崽：标个小小的「幼」
+    c.fillStyle = 'rgba(80,120,180,.9)';
+    c.font = 'bold 10px "PingFang SC",sans-serif';
+    c.fillText('幼', x - 5, y - tall * 0.6);
+  } else if (isProductReady(a)) {
     c.font = '13px serif';
     c.fillText(def.productIcon, x - 6, y - tall + Math.sin(nowMs / 300) * 2);
   } else if (!a.fedToday) {

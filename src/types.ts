@@ -114,6 +114,12 @@ export interface Animal {
   productReady: boolean;
   /** 羊专用：羊毛生长度 0~100，满 100 可剪 */
   wool: number;
+  /** 是否成年（幼崽 false，不产出也不能配种） */
+  adult: boolean;
+  /** 幼崽还要几天长大（成年后为 0） */
+  growDays: number;
+  /** 怀孕剩余天数（0 = 没怀孕） */
+  pregnantDays: number;
   x: number;
   y: number;
   dir: Dir;

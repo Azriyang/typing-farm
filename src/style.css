@@ -782,3 +782,5 @@ html, body {
 }
 /* 羊毛进度条与心情条区分 */
 .happy-bar.wool i { background: linear-gradient(90deg, #d8cbb8, #b8a892); }
+/* 动物状态行（幼崽 / 怀孕） */
+.animal-status .as-row .v.stage { color: #b06a8f; font-weight: 800; }

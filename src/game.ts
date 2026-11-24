@@ -26,7 +26,8 @@ import {
 } from './tools';
 import {
   ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals, animalNear,
-  animalById, happinessQuality, settleAnimalsOvernight, isProductReady
+  animalById, happinessQuality, settleAnimalsOvernight, isProductReady,
+  canBreed, breedPartner, animalStageText, PREGNANCY_DAYS, PER_KIND_LIMIT
 } from './animals';
 import {
   VILLAGER_DEFS, VILLAGER_ORDER, createVillager, updateVillagers, villagerNear,
@@ -54,12 +55,14 @@ let lastTs = 0;
 const keys = new Set<string>();
 
 interface Pending {
-  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'chat';
+  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'breed' | 'chat';
   tool: ToolId | null;
   plots: number[];
   nodeKey: string | null;
   crop?: CropId;
   animalId?: string;
+  /** 配种对象 */
+  partnerId?: string;
   villagerId?: string;
   stamina: number;
   time: number;
@@ -117,7 +120,7 @@ const session = new TypingSession({
       return;
     }
 
-    if (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear') {
+    if (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear' || p.kind === 'breed') {
       if (r.perfect) {
         state.combo++;
         state.stats.maxCombo = Math.max(state.stats.maxCombo, state.combo);
@@ -172,7 +175,7 @@ const session = new TypingSession({
       return;
     }
 
-    if (p && (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear')) {
+    if (p && (p.kind === 'feed' || p.kind === 'collect' || p.kind === 'milk' || p.kind === 'pet' || p.kind === 'shear' || p.kind === 'breed')) {
       state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
       UI.toast('超时了……动物歪着头看你', 'bad');
       if (state.stamina <= 0) { faint(); return; }
@@ -236,6 +239,9 @@ function normalizeState(s: GameState): void {
   if (!Array.isArray(s.animals)) s.animals = [];
   for (const a of s.animals) {
     if (typeof a.wool !== 'number') a.wool = a.kind === 'sheep' ? 100 : 0;
+    if (typeof a.adult !== 'boolean') a.adult = true;
+    if (typeof a.growDays !== 'number') a.growDays = 0;
+    if (typeof a.pregnantDays !== 'number') a.pregnantDays = 0;
   }
   if (!Array.isArray(s.villagers)) s.villagers = VILLAGER_ORDER.map((id) => createVillager(id));
 
@@ -963,18 +969,19 @@ function ensureSeedInHand(): boolean {
 
 /* ---------------- 动物照料 ---------------- */
 
-type AnimalAction = 'feed' | 'collect' | 'milk' | 'pet' | 'shear';
+type AnimalAction = 'feed' | 'collect' | 'milk' | 'pet' | 'shear' | 'breed';
 
 const ANIMAL_COST: Record<AnimalAction, { stamina: number; time: number }> = {
   feed: { stamina: 2, time: 10 },
   collect: { stamina: 2, time: 5 },
   milk: { stamina: 4, time: 15 },
   pet: { stamina: 1, time: 5 },
-  shear: { stamina: 4, time: 20 }
+  shear: { stamina: 4, time: 20 },
+  breed: { stamina: 3, time: 20 }
 };
 
 const ACTION_LABEL: Record<AnimalAction, string> = {
-  feed: '喂食', collect: '捡蛋', milk: '挤奶', pet: '抚摸', shear: '剪毛'
+  feed: '喂食', collect: '捡蛋', milk: '挤奶', pet: '抚摸', shear: '剪毛', breed: '配种'
 };
 
 function animalCost(action: AnimalAction): { stamina: number; time: number } {
@@ -992,6 +999,7 @@ function buildAnimalWords(action: AnimalAction): Word[] {
     case 'pet': return makeWords('animal', 0, '抚摸', 1);
     // 剪毛：三连短词，像剪刀一下下的节奏
     case 'shear': return makeWords('animal', 0, '剪毛', 3);
+    case 'breed': return makeWords('animal', 2, '配种', 1);
   }
 }
 
@@ -1013,17 +1021,40 @@ function openAnimalPanel(a: Animal): void {
   const ready = isProductReady(a);
   const produce = produceAction(a);
   const happyPct = Math.round(a.happiness);
+  const stage = animalStageText(a);
+  const partner = a.adult ? breedPartner(state, a) : null;
 
   // 羊显示羊毛生长度，其它显示「今天有没有产物」
-  const productRow = a.kind === 'sheep'
-    ? `<div class="as-row"><span class="k">羊毛</span>
+  const productRow = !a.adult
+    ? `<div class="as-row"><span class="k">${def.productName}</span><span class="v">— 还小，不产出</span></div>`
+    : a.kind === 'sheep'
+      ? `<div class="as-row"><span class="k">羊毛</span>
          <span class="happy-bar wool"><i style="width:${Math.round(a.wool)}%"></i></span>
          <span class="v">${ready ? '✓ 可剪' : Math.round(a.wool) + '%'}</span></div>`
-    : `<div class="as-row"><span class="k">${def.productName}</span><span class="v">${ready ? '✓ 可收获' : '— 喂了明天才有'}</span></div>`;
+      : `<div class="as-row"><span class="k">${def.productName}</span><span class="v">${ready ? '✓ 可收获' : '— 喂了明天才有'}</span></div>`;
 
-  const tip = a.kind === 'sheep'
-    ? '羊毛长满了才能剪。喂食让羊毛长得更快，心情决定羊毛品质。'
-    : `心情越好，${def.productName}品质越高。喂食 + 抚摸涨心情，饿着会掉。`;
+  // 成长 / 怀孕状态行
+  const stageRow = stage
+    ? `<div class="as-row"><span class="k">状态</span><span class="v stage">${stage}</span></div>`
+    : '';
+
+  let tip: string;
+  if (!a.adult) {
+    tip = '幼崽要养大才会产出。按时喂食，几天后它就长大了。';
+  } else if (a.pregnantDays > 0) {
+    tip = '这几天多照顾它，小宝宝过几天就要出生了。';
+  } else if (a.kind === 'sheep') {
+    tip = '羊毛长满了才能剪。喂食让羊毛长得更快，心情决定羊毛品质。';
+  } else {
+    tip = `心情越好，${def.productName}品质越高。喂食 + 抚摸涨心情，饿着会掉。`;
+  }
+
+  // 配种条件说明
+  const breedHint = a.adult && a.pregnantDays <= 0
+    ? (partner
+        ? '两只都成年、心情够好、今天都喂过，就能配种。'
+        : '需要有另一只同类：成年、心情 ≥70、今天喂过。')
+    : '';
 
   const status = `
     <div class="animal-status">
@@ -1033,20 +1064,30 @@ function openAnimalPanel(a: Animal): void {
       <div class="as-row"><span class="k">喂食</span><span class="v">${a.fedToday ? '✓ 已喂' : '✗ 还没喂'}</span></div>
       ${productRow}
       <div class="as-row"><span class="k">抚摸</span><span class="v">${a.pettedToday ? '✓ 已抚摸' : '✗ 还没摸'}</span></div>
+      ${stageRow}
     </div>
-    <p class="dim">${tip}</p>`;
+    <p class="dim">${tip}</p>
+    ${breedHint ? `<p class="dim">${breedHint}</p>` : ''}`;
 
-  UI.showModal(
-    `${def.icon} ${animalTitle(a)}`,
-    status,
-    [
-      { label: a.fedToday ? '已喂食' : '喂食', cls: a.fedToday ? 'ghost' : 'green', onClick: () => { if (!a.fedToday) { UI.hideModal(); startAnimalAction(a, 'feed'); } } },
-      { label: ready ? produce.label : '无产物', cls: ready ? 'green' : 'ghost', onClick: () => { if (ready) { UI.hideModal(); startAnimalAction(a, produce.action); } } },
-      { label: a.pettedToday ? '已抚摸' : '抚摸', cls: a.pettedToday ? 'ghost' : '', onClick: () => { if (!a.pettedToday) { UI.hideModal(); startAnimalAction(a, 'pet'); } } },
-      { label: '改名', cls: 'ghost', onClick: () => renameAnimal(a) },
-      { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
-    ]
-  );
+  const actions: UI.ModalAction[] = [
+    { label: a.fedToday ? '已喂食' : '喂食', cls: a.fedToday ? 'ghost' : 'green', onClick: () => { if (!a.fedToday) { UI.hideModal(); startAnimalAction(a, 'feed'); } } },
+    { label: ready ? produce.label : '无产物', cls: ready ? 'green' : 'ghost', onClick: () => { if (ready) { UI.hideModal(); startAnimalAction(a, produce.action); } } },
+    { label: a.pettedToday ? '已抚摸' : '抚摸', cls: a.pettedToday ? 'ghost' : '', onClick: () => { if (!a.pettedToday) { UI.hideModal(); startAnimalAction(a, 'pet'); } } }
+  ];
+
+  // 配种按钮：成年、未怀孕才出现
+  if (a.adult && a.pregnantDays <= 0) {
+    actions.push({
+      label: '配种',
+      cls: partner ? '' : 'ghost',
+      onClick: () => { if (partner) { UI.hideModal(); startBreed(a, partner); } }
+    });
+  }
+
+  actions.push({ label: '改名', cls: 'ghost', onClick: () => renameAnimal(a) });
+  actions.push({ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() });
+
+  UI.showModal(`${def.icon} ${animalTitle(a)}`, status, actions);
 }
 
 /** 给动物起名 */
@@ -1071,6 +1112,31 @@ function renameAnimal(a: Animal): void {
       }
     ]
   );
+}
+
+/** 开始配种：双方都要成年、心情够、今天喂过 */
+function startBreed(a: Animal, partner: Animal): void {
+  if (session.active) return;
+  if (!canBreed(a) || !canBreed(partner)) {
+    UI.toast('配种条件不满足（要成年、心情 ≥70、今天喂过）', 'bad');
+    openAnimalPanel(a);
+    return;
+  }
+  const cost = animalCost('breed');
+  if (state.stamina < cost.stamina) {
+    UI.toast('体力不够了，回屋睡觉吧', 'bad');
+    openAnimalPanel(a);
+    return;
+  }
+
+  pending = {
+    kind: 'breed', tool: null, plots: [], nodeKey: null,
+    animalId: a.id, partnerId: partner.id,
+    stamina: cost.stamina, time: cost.time, label: '配种'
+  };
+  currentLabel = `配种 · ${animalTitle(a)} & ${animalTitle(partner)}`;
+  UI.resetTypingCache();
+  session.start(buildAnimalWords('breed'), 0, 1, performance.now());
 }
 
 function startAnimalAction(a: Animal, action: AnimalAction): void {
@@ -1147,6 +1213,24 @@ function applyAnimalAction(p: Pending, perfect: boolean): void {
       Sound.play('harvest');
       break;
     }
+    case 'breed': {
+      const partner = p.partnerId ? animalById(state, p.partnerId) : null;
+      if (!partner) return;
+      // 只让玩家操作的那只怀孕，减少连续刷数量
+      a.pregnantDays = PREGNANCY_DAYS[a.kind];
+      a.happiness = Math.min(100, a.happiness + 5);
+      partner.happiness = Math.min(100, partner.happiness + 5);
+      // 消耗掉当天的喂食，避免同一天反复配种
+      a.fedToday = false;
+      partner.fedToday = false;
+      state.stats.animalsTended++;
+
+      floatText(cx, cy - 34, `有喜了 ♥`, '#f0a0b0', 14);
+      burst(cx, cy - 14, '#f0a0b0', 14, 1.1);
+      Sound.play('perfect');
+      UI.toast(`${animalTitle(a)} 怀孕了，${PREGNANCY_DAYS[a.kind]} 天后会有小宝宝`, 'good');
+      break;
+    }
     default:
       break;
   }
@@ -1156,7 +1240,7 @@ function buyAnimal(kind: AnimalKind): void {
   const def = ANIMAL_DEFS[kind];
   if (state.coins < def.price) { UI.toast('金币不够', 'bad'); return; }
   const count = state.animals.filter((a) => a.kind === kind).length;
-  if (count >= 6) { UI.toast('围栏已经满了（每种最多 6 只）', 'bad'); return; }
+  if (count >= PER_KIND_LIMIT) { UI.toast(`围栏已经满了（每种最多 ${PER_KIND_LIMIT} 只）`, 'bad'); return; }
   state.coins -= def.price;
   state.animals.push(createAnimal(kind, `${def.name}${count + 1}`));
   Sound.play('levelup');
@@ -1423,7 +1507,7 @@ function openShop(): void {
   const animalRows = ANIMAL_ORDER.map((kind) => {
     const def = ANIMAL_DEFS[kind];
     const count = state.animals.filter((a) => a.kind === kind).length;
-    const full = count >= 6;
+    const full = count >= PER_KIND_LIMIT;
     const cant = state.coins < def.price || full;
     return `<div class="shop-row${cant ? ' cant' : ''}">
       <div><div class="nm">${def.icon} ${def.name}</div>
@@ -2385,6 +2469,8 @@ function setupTitle(): void {
          <li>喂食 → 第二天才有蛋 / 奶；抚摸涨心情</li>
          <li>心情决定蛋 / 奶品质，饿着会掉心情</li>
           <li>羊不产蛋奶，而是攒羊毛：喂食让毛长，长满 100% 就能剪</li>
+          <li>繁殖：两只同类都成年、心情 ≥70、当天都喂过，就能配种；几天后生一只幼崽</li>
+          <li>幼崽要养 4 天才长大，长大前不产出；每种最多 6 只</li>
           <li>动物可以改名，面板里有个「改名」按钮</li>
          <li>挤奶和剪毛都是三连短词，跟着节奏一下下按</li>
        </ul>

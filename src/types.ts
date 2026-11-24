@@ -180,6 +180,8 @@ export interface Villager {
   lookT?: number;
   /** 当前目标点标识；换了地方且距离很远时直接到场（视为从别处赶来） */
   spotKey?: string;
+  /** 寻路得到的路径点 */
+  path?: Array<{ tx: number; ty: number }> | null;
 }
 
 /* ---------------- 地块 ---------------- */
@@ -200,6 +202,8 @@ export interface Player {
   dir: Dir;
   moving: boolean;
   walkT: number;
+  /** 点击移动的路径点（tile 坐标）；空表示没有自动移动 */
+  path?: Array<{ tx: number; ty: number }> | null;
 }
 
 export interface Stats {

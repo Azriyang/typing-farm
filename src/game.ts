@@ -6,7 +6,7 @@ import { CFG, CROPS, CROP_ORDER } from './config';
 import { storage } from './platform';
 import { Sound } from './audio';
 import { TypingSession } from './typing';
-import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase, applySeason } from './render';
+import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase, applySeason, getCamera } from './render';
 import * as UI from './ui';
 import {
   seasonOfDay, rollWeather, weatherWaters, growthMultiplier, isInSeason,
@@ -15,7 +15,7 @@ import {
 import {
   buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
   TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
-  unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS,
+  unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS, isBlockedTile, VIEW_W, VIEW_H,
   ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt,
   MINE_ROOM, MINE_FLOORS, mineOrePlan, getMineFloor, setMineFloor
 } from './world';
@@ -33,6 +33,7 @@ import {
   COOK_RECIPES, cookRecipeById, isFood, foodStamina, cookInputText, cookOutName,
   inputValue, TIER_LABEL
 } from './cook';
+import { findPath, nearestWalkable, simplifyPath } from './pathfind';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
 } from './action';
@@ -2820,11 +2821,88 @@ function faint(): void {
 
 /* ---------------- 玩家移动 ---------------- */
 
+/* ---------------- 点击移动 ---------------- */
+
+/** 某一格能不能站人（供寻路用） */
+function walkableTile(tx: number, ty: number): boolean {
+  return !isBlockedTile(tx, ty);
+}
+
+/** 点地图 → 自动走过去 */
+function moveToPointer(clientX: number, clientY: number): void {
+  const cv = UI.$<HTMLCanvasElement>('cv');
+  const rect = cv.getBoundingClientRect();
+  // 屏幕像素 → 画布逻辑像素 → 世界坐标
+  const scaleX = VIEW_W / rect.width;
+  const scaleY = VIEW_H / rect.height;
+  const sx = (clientX - rect.left) * scaleX;
+  const sy = (clientY - rect.top) * scaleY;
+  const cam = getCamera();
+  const wx = sx + cam.x;
+  const wy = sy + cam.y;
+
+  const tx = Math.floor(wx / TILE);
+  const ty = Math.floor(wy / TILE);
+
+  const fromX = Math.floor(state.player.x / TILE);
+  const fromY = Math.floor((state.player.y - 6) / TILE);
+
+  // 点到不可走的地方（水、墙、树）就走它旁边
+  const dest = nearestWalkable(tx, ty, walkableTile, 4);
+  if (!dest) return;
+
+  const raw = findPath(fromX, fromY, dest.tx, dest.ty, walkableTile);
+  if (!raw || raw.length === 0) return;
+
+  state.player.path = simplifyPath(raw);
+  // 点击处的反馈：让玩家看得见「走到那儿去」
+  burst(dest.tx * TILE + TILE / 2, dest.ty * TILE + TILE / 2, '#9ad0ff', 8, 0.8);
+}
+
+/** 沿路径走一步；返回是否还在走 */
+function stepAlongPath(dt: number): boolean {
+  const p = state.player;
+  const path = p.path;
+  if (!path || path.length === 0) { p.path = null; return false; }
+
+  const next = path[0];
+  const gx = next.tx * TILE + TILE / 2;
+  const gy = next.ty * TILE + TILE / 2;
+  const dx = gx - p.x;
+  const dy = gy - p.y;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist < 3) {
+    path.shift();
+    if (path.length === 0) { p.path = null; p.moving = false; return false; }
+    return true;
+  }
+
+  // 走路略慢于手动，让"自动"显得从容
+  const speed = 150;
+  const step = Math.min(dist, speed * dt);
+  p.x += (dx / dist) * step;
+  p.y += (dy / dist) * step;
+  p.moving = true;
+  p.walkT += dt;
+  p.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+  return true;
+}
+
 function updatePlayer(dt: number): void {
   const p = state.player;
   if (session.active || UI.isModalOpen() || fishing.phase !== 'idle') {
     p.moving = false;
     return;
+  }
+
+  // 有自动路径时优先走路径；任何移动键都会打断它
+  const anyMoveKey = keys.has('KeyA') || keys.has('KeyD') || keys.has('KeyW') || keys.has('KeyS')
+    || keys.has('ArrowLeft') || keys.has('ArrowRight') || keys.has('ArrowUp') || keys.has('ArrowDown');
+  if (anyMoveKey && p.path) { p.path = null; }
+
+  if (!anyMoveKey && p.path && p.path.length > 0) {
+    if (stepAlongPath(dt)) return;
   }
 
   let dx = 0;
@@ -3218,6 +3296,12 @@ export function boot(): void {
 
   state = newState();
   UI.bindModalMask();
+
+  // 点击画面自动走过去（打字游戏里，移动不该占用打字的手）
+  cv.addEventListener('click', (e) => {
+    if (!running || session.active || UI.isModalOpen() || fishing.phase !== 'idle') return;
+    moveToPointer(e.clientX, e.clientY);
+  });
   setupTitle();
 
   window.addEventListener('keydown', onKeyDown);

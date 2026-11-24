@@ -6,7 +6,8 @@
    ============================================================ */
 
 import type { Villager, DialoguePhrase, Dir, GameState, Season, Weather } from './types';
-import { TILE, TOWN_OPEN, canStand, MAP_W, MAP_H } from './world';
+import { TILE, TOWN_OPEN, MAP_W, MAP_H, isBlockedTile } from './world';
+import { findPath, simplifyPath } from './pathfind';
 import { seasonOfDay } from './seasons';
 
 /* ============================================================
@@ -303,7 +304,7 @@ export function updateVillagers(state: GameState, dt: number): void {
     const farFromGoal = Math.hypot(goalX - v.x, goalY - v.y);
 
     // 刚从家里出来，或换了目的地而且很远 → 直接到场（视为「从别处赶来」）
-    // 近距离仍然走过去，所以玩家看得见的是自然的走路
+    // 近距离则用 A* 真走过去，所以能绕开池塘、房屋、围栏
     if (v.active === false || (v.spotKey !== spotKey && farFromGoal > 520)) {
       const sp = plan.spot;
       v.x = sp.tx * TILE + TILE / 2 + (Math.random() - 0.5) * TILE * 1.2;
@@ -311,6 +312,15 @@ export function updateVillagers(state: GameState, dt: number): void {
       v.tx = v.x;
       v.ty = v.y;
       v.lookT = 0;
+      v.path = null;
+    }
+
+    // 目标变了 → 重新算路
+    if (v.spotKey !== spotKey || !v.path) {
+      const fromTileX = Math.floor(v.x / TILE);
+      const fromTileY = Math.floor(v.y / TILE);
+      const raw = findPath(fromTileX, fromTileY, plan.spot.tx, plan.spot.ty, (tx, ty) => !isBlockedTile(tx, ty));
+      v.path = raw ? simplifyPath(raw) : null;
     }
     v.spotKey = spotKey;
     v.active = true;
@@ -322,6 +332,7 @@ export function updateVillagers(state: GameState, dt: number): void {
     if (arrived) {
       // 到了：站定，偶尔环顾四周
       v.moving = false;
+      v.path = null;
       v.lookT = (v.lookT ?? 0) - dt;
       if (v.lookT <= 0) {
         const dirs: Dir[] = ['down', 'left', 'right', 'up'];
@@ -333,32 +344,27 @@ export function updateVillagers(state: GameState, dt: number): void {
         v.x += (Math.random() - 0.5) * 20;
         v.y += (Math.random() - 0.5) * 16;
       }
-    } else {
-      // 朝目标走；挡住就横向蹭
-      const sp = 22;
-      const dx = (goalX - v.x) / dist;
-      const dy = (goalY - v.y) / dist;
-      const nx = v.x + dx * sp * dt;
-      const ny = v.y + dy * sp * dt;
-      if (canStand(nx, ny)) {
-        v.x = nx;
-        v.y = ny;
+    } else if (v.path && v.path.length > 0) {
+      // 沿 A* 路径走
+      const next = v.path[0];
+      const wx = next.tx * TILE + TILE / 2;
+      const wy = next.ty * TILE + TILE / 2;
+      const ndx = wx - v.x;
+      const ndy = wy - v.y;
+      const nd = Math.hypot(ndx, ndy);
+      if (nd < 4) {
+        v.path.shift();
       } else {
-        // 侧向试探：优先沿较大的那个轴的垂直方向
-        const sx = -dy;
-        const sy = dx;
-        const sign = Math.random() < 0.5 ? 1 : -1;
-        if (canStand(v.x + sx * sp * dt * sign, v.y + sy * sp * dt * sign)) {
-          v.x += sx * sp * dt * sign;
-          v.y += sy * sp * dt * sign;
-        } else if (canStand(nx, v.y)) {
-          v.x = nx;
-        } else if (canStand(v.x, ny)) {
-          v.y = ny;
-        }
+        const sp = 22;
+        const step = Math.min(nd, sp * dt);
+        v.x += (ndx / nd) * step;
+        v.y += (ndy / nd) * step;
+        v.moving = true;
+        v.dir = Math.abs(ndx) > Math.abs(ndy) ? (ndx > 0 ? 'right' : 'left') : (ndy > 0 ? 'down' : 'up');
       }
-      v.moving = true;
-      v.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    } else {
+      // 没算出路径（被围住）→ 原地待着，别乱蹭
+      v.moving = false;
     }
 
     // 兜底：别跑出地图

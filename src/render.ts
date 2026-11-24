@@ -2150,7 +2150,12 @@ export function worldToScreen(x: number, y: number): { x: number; y: number } {
   return { x: x - camX, y: y - camY };
 }
 
-/** 调试：当前相机位置 */
+/** 当前相机位置（点击移动要做屏幕→世界坐标换算） */
+export function getCamera(): { x: number; y: number } {
+  return { x: camX, y: camY };
+}
+
+/** 兼容调试入口 */
 export function debugCamera(): { x: number; y: number } {
   return { x: camX, y: camY };
 }

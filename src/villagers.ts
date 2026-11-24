@@ -79,7 +79,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
   },
   girl: {
     id: 'girl', name: '阿晴', role: '爱花的姑娘', icon: '🌸', shirt: '#c96a8f',
-    likes: ['crop.strawberry', 'mat.fiber'], dislikes: ['mat.stone'],
+    likes: ['crop.strawberry', 'mat.fiber', 'flower.'], dislikes: ['mat.stone'],
     greet: '嗨！今天的花开得真好。',
     reactions: {
       like: ['哇，我好喜欢！谢谢你！', '你怎么知道我想要这个～', '好开心呀！'],
@@ -132,6 +132,24 @@ export function giftReaction(def: VillagerDef, itemId: string): GiftReaction {
 }
 
 export const GIFT_GAIN: Record<GiftReaction, number> = { like: 15, neutral: 5, dislike: -3 };
+
+/**
+ * 花卉是社交筹码：即使不算「喜欢」，好感也给得更多。
+ * 花卖不了几个钱，种它就是为了送人。
+ */
+export const FLOWER_GIFT_BONUS = 5;
+
+export function isFlowerItem(itemId: string): boolean {
+  return itemId.startsWith('flower.');
+}
+
+/** 这件礼物实际加多少好感 */
+export function giftGain(def: VillagerDef, itemId: string): number {
+  const reaction = giftReaction(def, itemId);
+  const base = GIFT_GAIN[reaction];
+  if (reaction !== 'dislike' && isFlowerItem(itemId)) return base + FLOWER_GIFT_BONUS;
+  return base;
+}
 
 /* ---------------- 创建与游走 ---------------- */
 

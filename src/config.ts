@@ -100,19 +100,45 @@ export const CROPS: Record<CropId, CropDef> = {
     days: 6, price: 330, seed: 110,
     leaf: '#3f7a44', fruit: '#4a8a4a', shape: 'leafy', emoji: '🥦',
     season: 'winter'
+  },
+
+  /* ---------------- 花卉：社交筹码，不是经济作物 ---------------- */
+  tulip: {
+    id: 'tulip', zh: '郁金香', en: 'tulip',
+    days: 4, price: 45, seed: 70,
+    leaf: '#5a9a48', fruit: '#e86a9a', shape: 'flower', emoji: '🌷',
+    season: 'spring', kind: 'flower'
+  },
+  lily: {
+    id: 'lily', zh: '百合', en: 'lily',
+    days: 4, price: 45, seed: 70,
+    leaf: '#5a9a48', fruit: '#f2eef8', shape: 'flower', emoji: '🌸',
+    season: 'summer', kind: 'flower'
+  },
+  daisy: {
+    id: 'daisy', zh: '雏菊', en: 'daisy',
+    days: 4, price: 45, seed: 70,
+    leaf: '#5a9a48', fruit: '#f5e07a', shape: 'flower', emoji: '🌼',
+    season: 'autumn', kind: 'flower'
+  },
+  camellia: {
+    id: 'camellia', zh: '山茶', en: 'camellia',
+    days: 4, price: 45, seed: 70,
+    leaf: '#4a7a44', fruit: '#d94a4a', shape: 'flower', emoji: '🌺',
+    season: 'winter', kind: 'flower'
   }
 };
 
-/** 商店与图鉴顺序：按季节分组，同季按生长期从短到长 */
+/** 商店与图鉴顺序：按季节分组，同季按生长期从短到长，花卉排在每季末尾 */
 export const CROP_ORDER: CropId[] = [
   // 春
-  'turnip', 'onion', 'potato', 'strawberry',
+  'turnip', 'onion', 'potato', 'strawberry', 'tulip',
   // 夏
-  'pepper', 'tomato', 'corn', 'melon',
+  'pepper', 'tomato', 'corn', 'melon', 'lily',
   // 秋
-  'cabbage', 'eggplant', 'pumpkin',
+  'cabbage', 'eggplant', 'pumpkin', 'daisy',
   // 冬
-  'carrot', 'spinach', 'radish', 'broccoli'
+  'carrot', 'spinach', 'radish', 'broccoli', 'camellia'
 ];
 
 /* ---------------- 词库 ---------------- */

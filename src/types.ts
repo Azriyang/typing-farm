@@ -18,7 +18,12 @@ export type CropId =
   | 'pepper'
   | 'eggplant'
   | 'broccoli'
-  | 'melon';
+  | 'melon'
+  /* 花卉：四季各一种 */
+  | 'tulip'
+  | 'lily'
+  | 'daisy'
+  | 'camellia';
 
 export type ToolId = 'hoe' | 'can' | 'axe' | 'pick' | 'sickle' | 'rod';
 
@@ -27,7 +32,7 @@ export type Weather = 'sunny' | 'rain' | 'snow';
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 /** 场景：农场（室外）/ 住宅 / 鸡舍 / 牛棚 */
 export type SceneId = 'farm' | 'house' | 'coop' | 'barn' | 'mine';
-export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy';
+export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy' | 'flower';
 
 export interface CropDef {
   id: CropId;
@@ -42,6 +47,11 @@ export interface CropDef {
   emoji: string;
   /** 适宜季节；反季生长 ×2 慢 */
   season: Season;
+  /**
+   * 普通作物 or 花卉。
+   * 花卉卖不了几个钱，但送礼好感加成更高——定位是社交筹码。
+   */
+  kind?: 'crop' | 'flower';
 }
 
 export interface Word {
@@ -53,7 +63,7 @@ export interface Word {
 
 /* ---------------- 物品 ---------------- */
 
-export type ItemKind = 'seed' | 'crop' | 'material' | 'tool' | 'fish' | 'product';
+export type ItemKind = 'seed' | 'crop' | 'material' | 'tool' | 'fish' | 'product' | 'flower';
 
 export interface ItemDef {
   id: string;

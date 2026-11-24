@@ -41,7 +41,7 @@ import {
 } from './animals';
 import {
   VILLAGER_DEFS, VILLAGER_ORDER, createVillager, updateVillagers, villagerNear,
-  villagerById, hearts, addFriendship, shopDiscount, giftReaction, GIFT_GAIN,
+  villagerById, hearts, addFriendship, shopDiscount, giftReaction, giftGain,
   pickPhrase, pickReaction, settleVillagersOvernight
 } from './villagers';
 import * as Bag from './items';
@@ -1602,7 +1602,7 @@ function giveGift(v: Villager, bagIndex: number): void {
   if (!s) return;
   const def = VILLAGER_DEFS[v.id];
   const reaction = giftReaction(def, s.id);
-  addFriendship(v, GIFT_GAIN[reaction]);
+  addFriendship(v, giftGain(def, s.id));
   Bag.removeFromBag(state.bag, s.id, 1, s.quality);
   v.giftedToday = true;
   state.stats.gifts++;
@@ -1708,10 +1708,14 @@ function openShop(): void {
       : `<span class="season-tag off">${SEASON_ICON[c.season]} ${SEASON_LABEL[c.season]}季 · 慢一倍</span>`;
     const saleTag = fest.seedMult < 1 ? `<span class="season-tag in">半价</span>` : '';
     const oldPrice = fest.seedMult < 1 ? `<s class="dm">${c.seed}G</s> ` : '';
+    const isFlower = c.kind === 'flower';
+    const infoLine = isFlower
+      ? `${c.days}天开花 · 卖只值 ${c.price}G，但送礼好感更高`
+      : `${c.days}天成熟 · 售${c.price}G · 持有 ${stock}`;
     return `<div class="shop-row${cant}">
       <div>
-        <div class="nm">${c.emoji} ${c.zh}种子 <span class="dm">${c.en}</span> ${seasonTag}${saleTag}</div>
-        <div class="dt">${c.days}天成熟 · 售${c.price}G · 持有 ${stock}</div>
+        <div class="nm">${c.emoji} ${c.zh}${isFlower ? '花种' : '种子'} <span class="dm">${c.en}</span> ${seasonTag}${saleTag}</div>
+        <div class="dt">${infoLine}</div>
       </div>
       <div class="pr">${oldPrice}${price}G</div>
       <div class="buy-group">
@@ -2403,9 +2407,13 @@ function renderWords(): void {
 function openDex(): void {
   const items = CROP_ORDER.map((id) => {
     const c = CROPS[id];
-    return `<div class="dex-item"><span class="em">${c.emoji}</span>
+    const isFlower = c.kind === 'flower';
+    const tail = isFlower
+      ? `${c.days}天开花 · 送人好感高`
+      : `${c.days}天 · ${c.price}G`;
+    return `<div class="dex-item${isFlower ? ' flower' : ''}"><span class="em">${c.emoji}</span>
       <span class="info"><b>${c.zh}</b> <span class="en">${c.en}</span><br>
-      ${c.days}天 · ${c.price}G · ${SEASON_ICON[c.season]}${SEASON_LABEL[c.season]}季</span></div>`;
+      ${tail} · ${SEASON_ICON[c.season]}${SEASON_LABEL[c.season]}季</span></div>`;
   }).join('');
   const toolsHtml = (Object.keys(TOOLS) as ToolId[]).map((id) => {
     const t = TOOLS[id];

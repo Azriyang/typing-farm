@@ -1338,6 +1338,40 @@ function drawCrop(c: Ctx, cx: number, baseY: number, plot: Plot, cropId: CropId,
       }
       break;
     }
+    case 'flower': {
+      // 花卉：细直茎 + 两侧叶 + 顶部花瓣环绕花心
+      const fy = baseY - 30;
+      c.strokeStyle = shift(def.leaf, -30);
+      c.lineWidth = 3;
+      c.beginPath(); c.moveTo(cx, baseY); c.lineTo(cx + sway * 0.5, fy); c.stroke();
+      c.strokeStyle = def.leaf;
+      c.lineWidth = 1.6;
+      c.beginPath(); c.moveTo(cx, baseY); c.lineTo(cx + sway * 0.5, fy); c.stroke();
+
+      // 两片叶
+      leafBlob(c, cx - 6, baseY - 12, 7, 3.4, -0.5, def.leaf);
+      leafBlob(c, cx + 6, baseY - 19, 6, 3.0, 0.5, def.leaf);
+
+      // 花瓣：五片围一圈
+      const pr = 4.6;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2 + sway * 0.05;
+        const px = cx + Math.cos(a) * pr;
+        const py = fy + Math.sin(a) * pr;
+        c.fillStyle = shift(def.fruit, -40);
+        c.beginPath(); c.ellipse(px, py, 4.4, 4.0, a, 0, Math.PI * 2); c.fill();
+        c.fillStyle = def.fruit;
+        c.beginPath(); c.ellipse(px, py, 3.6, 3.2, a, 0, Math.PI * 2); c.fill();
+        c.fillStyle = shift(def.fruit, 26);
+        c.beginPath(); c.ellipse(px, py - 0.8, 1.8, 1.5, a, 0, Math.PI * 2); c.fill();
+      }
+      // 花心
+      c.fillStyle = '#e8b23a';
+      c.beginPath(); c.arc(cx, fy, 3.2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#f5d06a';
+      c.beginPath(); c.arc(cx - 0.8, fy - 0.8, 1.6, 0, Math.PI * 2); c.fill();
+      break;
+    }
   }
 
   // 成熟微光

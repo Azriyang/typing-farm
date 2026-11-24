@@ -15,21 +15,24 @@ function reg(def: ItemDef): void {
 
 for (const id of CROP_ORDER) {
   const c = CROPS[id];
+  const isFlower = c.kind === 'flower';
   reg({
     id: `seed.${id}`,
     kind: 'seed',
-    name: `${c.zh}种子`,
+    name: `${c.zh}${isFlower ? '花种' : '种子'}`,
     icon: c.emoji,
     max: 99,
-    desc: `${c.days} 天成熟 · 售价 ${c.price}G`
+    desc: isFlower
+      ? `${c.days} 天开花 · 卖不了几个钱，但送礼好感高`
+      : `${c.days} 天成熟 · 售价 ${c.price}G`
   });
   reg({
-    id: `crop.${id}`,
-    kind: 'crop',
+    id: `${isFlower ? 'flower' : 'crop'}.${id}`,
+    kind: isFlower ? 'flower' : 'crop',
     name: c.zh,
     icon: c.emoji,
     max: 99,
-    desc: `农场出品 · 打 ${c.en}`,
+    desc: isFlower ? `可送人 · 好感比普通礼物多` : `农场出品 · 打 ${c.en}`,
     price: c.price
   });
 }
@@ -112,8 +115,9 @@ export function seedItemId(crop: CropId): string {
   return `seed.${crop}`;
 }
 
+/** 收获产出的物品 id：花卉用 flower. 前缀，普通作物用 crop. */
 export function cropItemId(crop: CropId): string {
-  return `crop.${crop}`;
+  return CROPS[crop]?.kind === 'flower' ? `flower.${crop}` : `crop.${crop}`;
 }
 
 export function itemKind(id: string): ItemKind {

@@ -930,3 +930,5 @@ html, body {
 }
 /* 升级配方里的矿石需求 */
 .shop-row .ore { color: #8a6a3e; font-weight: 700; }
+/* 图鉴里的花卉条目：淡粉底，和作物区分 */
+.dex-item.flower { background: #fdf4f7; border-color: #e8c4d4; }

@@ -82,9 +82,9 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   if (!t) return null;
   if (t.kind === 'door') return base('door', '进屋', null);
   if (t.kind === 'object' && t.object) {
-    return t.object.kind === 'bin'
-      ? base('bin', '出货', null)
-      : base('order', '订购', null);
+    if (t.object.kind === 'bin') return base('bin', '出货', null);
+    if (t.object.kind === 'store') return base('order', '杂货店', null);
+    return base('order', '订购', null);
   }
 
   // 3) 地块

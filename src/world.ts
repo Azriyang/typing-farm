@@ -5,10 +5,13 @@
 import type { Dir, Player } from './types';
 
 export const TILE = 48;
-export const MAP_W = 30;
+export const MAP_W = 50;
 export const MAP_H = 22;
 export const VIEW_W = 960;
 export const VIEW_H = 600;
+
+/** 小镇从这一列开始（左侧是农场） */
+export const TOWN_X = 33;
 
 export const T = {
   GRASS: 0,
@@ -33,9 +36,9 @@ export const TREE_SPOTS: Array<[number, number]> = [
   [2, 13], [18, 4], [19, 12], [22, 6], [25, 10], [18, 10]
 ];
 
-/** 可开采的岩石（动态节点） */
+/** 可开采的岩石（动态节点）；原 y8 的四块让位给进镇道路，移到镇西石堆 */
 export const ROCK_SPOTS: Array<[number, number]> = [
-  [20, 8], [21, 8], [24, 11], [26, 3], [23, 8], [24, 8], [20, 10], [9, 12]
+  [30, 12], [31, 12], [24, 11], [26, 3], [30, 13], [31, 13], [20, 10], [9, 12]
 ];
 
 /** 鸡舍 / 牛棚（实心，挡路） */
@@ -43,6 +46,24 @@ export const BUILDINGS = {
   coop: { x: 3, y: 14, w: 3, h: 2 },
   barn: { x: 11, y: 14, w: 4, h: 2 }
 } as const;
+
+/** 小镇建筑（实心，挡路）；kind 用于渲染配色 */
+export interface TownBuilding { x: number; y: number; w: number; h: number; kind: 'store' | 'house'; roof: string }
+export const TOWN_BUILDINGS: TownBuilding[] = [
+  { x: 34, y: 2, w: 4, h: 4, kind: 'store', roof: '#4a8fbe' },
+  { x: 39, y: 2, w: 4, h: 4, kind: 'house', roof: '#c9743f' },
+  { x: 44, y: 2, w: 4, h: 4, kind: 'house', roof: '#6fae4e' },
+  { x: 35, y: 12, w: 4, h: 4, kind: 'house', roof: '#b06a8f' },
+  { x: 42, y: 12, w: 4, h: 4, kind: 'house', roof: '#c9a23f' }
+];
+
+/** 村民游走 / 玩家可行走的小镇开放区 */
+export const TOWN_OPEN = { x0: 33, y0: 6, x1: 47, y1: 11 };
+
+/** 是否落在小镇区域（排除杂草等） */
+export function inTownArea(tx: number): boolean {
+  return tx >= TOWN_X - 2;
+}
 
 /** 围栏活动区（可走入，动物在其中游走） */
 export const PENS = {
@@ -61,7 +82,7 @@ export function inAnimalArea(tx: number, ty: number): boolean {
   return false;
 }
 
-export type ObjectKind = 'bin' | 'order';
+export type ObjectKind = 'bin' | 'order' | 'store';
 
 export interface WorldObject {
   kind: ObjectKind;
@@ -72,7 +93,8 @@ export interface WorldObject {
 
 export const OBJECTS: WorldObject[] = [
   { kind: 'bin', tx: 18, ty: 8, label: '出货箱' },
-  { kind: 'order', tx: 10, ty: 5, label: '订购箱' }
+  { kind: 'order', tx: 10, ty: 5, label: '订购箱' },
+  { kind: 'store', tx: 35, ty: 5, label: '杂货店' }
 ];
 
 const terrain = new Uint8Array(MAP_W * MAP_H);
@@ -132,17 +154,22 @@ export function buildMap(): void {
   setRect(3, 5, 6, 2, T.WALL);
   set(5, 6, T.DOOR);
 
-  // 小路
+  // 小路（农场）+ 向东延伸的进镇道路
   setRect(4, 7, 15, 1, T.PATH);
   for (let x = 4; x <= 18; x++) set(x, 8, T.PATH);
   set(5, 8, T.PATH);
+  for (let x = 18; x <= 47; x++) { set(x, 7, T.PATH); set(x, 8, T.PATH); }
 
   // 农田
   setRect(FARM.x, FARM.y, FARM.cols, FARM.rows, T.SOIL);
 
+  // 小镇广场（街道南侧的一片空地）
+  setRect(38, 9, 7, 3, T.PATH);
+
   // 花丛（可走过）
   const flowers: Array<[number, number]> = [
-    [7, 10], [8, 14], [6, 14], [16, 14], [17, 6], [6, 11], [9, 9]
+    [7, 10], [8, 14], [6, 14], [16, 14], [17, 6], [6, 11], [9, 9],
+    [33, 6], [47, 6], [33, 11], [47, 11], [36, 9], [45, 10]
   ];
   for (const [x, y] of flowers) if (tileAt(x, y) === T.GRASS) set(x, y, T.FLOWER);
 }
@@ -168,6 +195,9 @@ export function isBlockedTile(x: number, y: number): boolean {
   if (dynamicBlocked.has(idx(x, y))) return true;
   for (const o of OBJECTS) if (o.tx === x && o.ty === y) return true;
   for (const b of Object.values(BUILDINGS)) {
+    if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
+  }
+  for (const b of TOWN_BUILDINGS) {
     if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) return true;
   }
   return false;

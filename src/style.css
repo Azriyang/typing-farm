@@ -743,3 +743,40 @@ html, body {
 }
 
 .shop-row .pr s { opacity: .5; font-weight: 400; }
+/* ---- 村民 / 送礼 ---- */
+
+.villager-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.villager-head .v-icon { font-size: 34px; line-height: 1; }
+.villager-head .v-info b { font-size: 16px; }
+.villager-head .v-hearts { color: #e06080; font-size: 14px; letter-spacing: 1px; margin-top: 2px; }
+.villager-head .v-hearts .dim { color: #c9b8a0; }
+.v-greet { margin: 4px 0 8px; }
+
+.gift-list { display: flex; flex-direction: column; gap: 5px; max-height: 300px; overflow: auto; }
+.gift-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all .1s;
+}
+.gift-row:hover { border-color: var(--gold); transform: translateY(-1px); }
+.gift-row .ic { font-size: 18px; }
+.gift-row .nm { font-size: 13px; font-weight: 700; flex: 1; }
+.gift-row .hint { font-size: 11px; font-weight: 700; }
+.gift-row .hint.like { color: #e06080; }
+.gift-row .hint.dislike { color: #b03a2e; }
+/* 村民送礼反应台词 */
+.v-reaction {
+  background: #fdeef2;
+  border-left: 4px solid #e06080;
+  padding: 9px 13px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #8a3a50;
+  margin: 4px 0 8px;
+}

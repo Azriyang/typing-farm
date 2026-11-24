@@ -120,6 +120,28 @@ export interface Animal {
   ty: number;
 }
 
+/* ---------------- 村民 ---------------- */
+
+export interface DialoguePhrase {
+  en: string;
+  zh: string;
+}
+
+export interface Villager {
+  id: string;
+  /** 好感 0~100，每 20 点心 */
+  friendship: number;
+  talkedToday: boolean;
+  giftedToday: boolean;
+  x: number;
+  y: number;
+  dir: Dir;
+  moving: boolean;
+  wanderT: number;
+  tx: number;
+  ty: number;
+}
+
 /* ---------------- 地块 ---------------- */
 
 export interface Plot {
@@ -152,6 +174,8 @@ export interface Stats {
   fishCaught: number;
   animalsTended: number;
   productsCollected: number;
+  chats: number;
+  gifts: number;
 }
 
 export interface GameState {
@@ -176,6 +200,7 @@ export interface GameState {
   tools: Record<ToolId, ToolState>;
   nodes: ResNode[];
   animals: Animal[];
+  villagers: Villager[];
   autoSwitch: boolean;
   /** 今日已割草数量（用于统计） */
   todayCleared: number;

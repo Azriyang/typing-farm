@@ -5,14 +5,15 @@
 import { CROPS } from './config';
 import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
-  plotTileOf, facingTile, BUILDINGS, PENS
+  plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS
 } from './world';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNear, ANIMAL_DEFS } from './animals';
+import { villagerNear, VILLAGER_DEFS } from './villagers';
 import { TOOLS } from './tools';
 import { PALETTES } from './seasons';
 import type { Palette } from './seasons';
-import type { GameState, Plot, Dir, CropId, ResNode, Animal, Season } from './types';
+import type { GameState, Plot, Dir, CropId, ResNode, Animal, Season, Villager } from './types';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -121,6 +122,7 @@ function drawBaseTerrain(c: Ctx) {
   drawPens(c);
   drawCoop(c);
   drawBarn(c);
+  drawTownBuildings(c);
 }
 
 function drawTile(c: Ctx, tx: number, ty: number, t: number) {
@@ -388,6 +390,54 @@ function drawBarn(c: Ctx) {
   c.fillText('🐄', x + 10, y + h - 8);
 }
 
+/* ---------------- 小镇建筑 ---------------- */
+
+function drawTownBuildings(c: Ctx) {
+  for (const b of TOWN_BUILDINGS) {
+    const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
+    const north = b.y < 8; // 门朝街道（北侧建筑门在下，南侧建筑门在上）
+    c.fillStyle = 'rgba(60,40,20,.18)';
+    c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.5, 10, 0, 0, Math.PI * 2); c.fill();
+    // 墙
+    c.fillStyle = b.kind === 'store' ? '#e8dcc0' : '#efdcba';
+    c.fillRect(x + 4, y + 22, w - 8, h - 22);
+    c.fillStyle = 'rgba(0,0,0,.08)';
+    for (let i = 0; i < 3; i++) c.fillRect(x + 4, y + 32 + i * 20, w - 8, 3);
+    // 屋顶
+    c.fillStyle = b.roof;
+    c.beginPath();
+    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
+    c.closePath(); c.fill();
+    c.fillStyle = 'rgba(0,0,0,.2)';
+    c.fillRect(x - 6, y + 23, w + 12, 4);
+    // 门（朝向街道一侧）
+    const doorY = north ? y + h - 34 : y + 22;
+    c.fillStyle = '#6f4a2b';
+    c.fillRect(x + w / 2 - 13, doorY, 26, 34);
+    c.fillStyle = '#8a5f38';
+    c.fillRect(x + w / 2 - 10, doorY + 3, 20, 31);
+    c.fillStyle = '#e8c86a';
+    c.fillRect(x + w / 2 + 5, doorY + 16, 3, 3);
+    // 窗
+    c.fillStyle = '#7fb8d4';
+    c.fillRect(x + 12, y + 34, 20, 16);
+    c.fillRect(x + w - 32, y + 34, 20, 16);
+    c.strokeStyle = '#8e6a44'; c.lineWidth = 2;
+    c.strokeRect(x + 12, y + 34, 20, 16);
+    c.strokeRect(x + w - 32, y + 34, 20, 16);
+    // 店铺招牌
+    if (b.kind === 'store') {
+      c.fillStyle = '#f7e9c4';
+      c.fillRect(x + w / 2 - 24, y + 26, 48, 14);
+      c.fillStyle = '#8a5a2b';
+      c.font = 'bold 10px "PingFang SC",sans-serif';
+      c.textAlign = 'center';
+      c.fillText('杂货店', x + w / 2, y + 36);
+      c.textAlign = 'left';
+    }
+  }
+}
+
 /* ---------------- 动物 ---------------- */
 
 function drawAnimal(c: Ctx, a: Animal, nowMs: number) {
@@ -523,6 +573,10 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   for (const a of state.animals) {
     ents.push({ y: a.y + 2, draw: () => drawAnimal(ctx, a, nowMs) });
+  }
+
+  for (const v of state.villagers ?? []) {
+    ents.push({ y: v.y + 2, draw: () => drawVillager(ctx, v, nowMs) });
   }
 
   ents.push({
@@ -710,7 +764,7 @@ function drawWaterShimmer(c: Ctx, nowMs: number) {
 
 /* ---------------- 物体 ---------------- */
 
-function drawObject(c: Ctx, kind: 'bin' | 'order', x: number, y: number, nowMs: number) {
+function drawObject(c: Ctx, kind: 'bin' | 'order' | 'store', x: number, y: number, nowMs: number) {
   c.fillStyle = 'rgba(60,40,20,.22)';
   c.beginPath();
   c.ellipse(x + TILE / 2, y + TILE - 6, 20, 6, 0, 0, Math.PI * 2);
@@ -742,7 +796,7 @@ function drawObject(c: Ctx, kind: 'bin' | 'order', x: number, y: number, nowMs: 
     const tw = (Math.sin(nowMs / 500) + 1) / 2;
     c.fillStyle = `rgba(255,240,180,${tw * 0.5})`;
     c.fillRect(x + 32, y + 12, 3, 3);
-  } else {
+  } else if (kind === 'order') {
     // 订购箱（信箱）
     c.fillStyle = '#6b4a2b';
     c.fillRect(x + 21, y + 26, 6, 18);
@@ -757,6 +811,20 @@ function drawObject(c: Ctx, kind: 'bin' | 'order', x: number, y: number, nowMs: 
     c.fillStyle = '#d9534f';
     c.fillRect(x + TILE - 12, y + 2, 3, 14);
     c.fillRect(x + TILE - 9 + wave, y + 3, 9, 6);
+  } else {
+    // 杂货店门口：货摊 + 遮阳棚
+    c.fillStyle = '#a9743f';
+    c.fillRect(x + 6, y + 26, TILE - 12, 16);
+    c.fillStyle = '#8b5c30';
+    c.fillRect(x + 6, y + 26, TILE - 12, 4);
+    c.fillStyle = '#f2d45c'; c.fillRect(x + 10, y + 20, 7, 7);
+    c.fillStyle = '#e34b3d'; c.fillRect(x + 20, y + 20, 7, 7);
+    c.fillStyle = '#6fae4e'; c.fillRect(x + 30, y + 20, 7, 7);
+    const wave = Math.sin(nowMs / 400) * 1.5;
+    c.fillStyle = '#4a8fbe';
+    c.fillRect(x + 2, y + 4 + wave * 0.3, TILE - 4, 7);
+    c.fillStyle = '#3a749c';
+    c.fillRect(x + 2, y + 9 + wave * 0.3, TILE - 4, 3);
   }
 }
 
@@ -847,6 +915,82 @@ function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, mov
   c.fillRect(-8, -44, 16, 2);
 
   c.restore();
+}
+
+/* ---------------- 村民 ---------------- */
+
+function drawVillager(c: Ctx, v: Villager, nowMs: number) {
+  const def = VILLAGER_DEFS[v.id];
+  const shirt = def?.shirt ?? '#8a8a8a';
+  const bob = v.moving ? Math.sin(nowMs / 120 + v.x) * 1.2 : 0;
+  const swing = v.moving ? Math.sin(nowMs / 120 + v.x) : 0;
+
+  c.fillStyle = 'rgba(60,40,20,.25)';
+  c.beginPath();
+  c.ellipse(v.x, v.y + 1, 11, 4, 0, 0, Math.PI * 2);
+  c.fill();
+
+  c.save();
+  c.translate(Math.round(v.x), Math.round(v.y + bob));
+
+  const skin = '#f3c9a0';
+  const pants = '#5a4a3e';
+  const hair = '#4a3a2e';
+  const boot = '#3d2b1f';
+
+  // 腿
+  c.fillStyle = pants;
+  c.fillRect(-7, -12 + swing * 1.5, 6, 12);
+  c.fillRect(1, -12 - swing * 1.5, 6, 12);
+  c.fillStyle = boot;
+  c.fillRect(-7, -4 + swing * 1.5, 6, 4);
+  c.fillRect(1, -4 - swing * 1.5, 6, 4);
+
+  // 身体
+  c.fillStyle = shirt;
+  c.fillRect(-9, -26, 18, 15);
+  c.fillStyle = 'rgba(0,0,0,.15)';
+  c.fillRect(-9, -13, 18, 2);
+
+  // 手臂
+  c.fillStyle = shirt;
+  if (v.dir === 'left') c.fillRect(-13, -24 + swing * 2, 5, 11);
+  else if (v.dir === 'right') c.fillRect(8, -24 - swing * 2, 5, 11);
+  else { c.fillRect(-13, -24 + swing * 2, 5, 11); c.fillRect(8, -24 - swing * 2, 5, 11); }
+  c.fillStyle = skin;
+  if (v.dir === 'left') c.fillRect(-13, -14 + swing * 2, 5, 4);
+  else if (v.dir === 'right') c.fillRect(8, -14 - swing * 2, 5, 4);
+  else { c.fillRect(-13, -14 + swing * 2, 5, 4); c.fillRect(8, -14 - swing * 2, 5, 4); }
+
+  // 头
+  c.fillStyle = skin;
+  c.fillRect(-8, -40, 16, 15);
+  // 头发
+  c.fillStyle = hair;
+  c.fillRect(-8, -42, 16, 5);
+  c.fillRect(-8, -40, 3, 6);
+  c.fillRect(5, -40, 3, 6);
+  // 眼睛
+  if (v.dir !== 'up') {
+    c.fillStyle = '#3d2b1f';
+    if (v.dir === 'down') { c.fillRect(-5, -33, 3, 3); c.fillRect(3, -33, 3, 3); }
+    else if (v.dir === 'left') c.fillRect(-6, -33, 3, 3);
+    else c.fillRect(3, -33, 3, 3);
+  }
+
+  c.restore();
+
+  // 头顶名牌（靠近时才显示，避免杂乱）
+  if (def) {
+    c.font = 'bold 11px "PingFang SC",sans-serif';
+    c.textAlign = 'center';
+    c.fillStyle = 'rgba(45,32,22,.75)';
+    const w = c.measureText(def.name).width + 10;
+    c.fillRect(v.x - w / 2, v.y - 58, w, 14);
+    c.fillStyle = '#fff4d8';
+    c.fillText(def.name, v.x, v.y - 48);
+    c.textAlign = 'left';
+  }
 }
 
 /* ---------------- 资源节点 ---------------- */
@@ -972,7 +1116,15 @@ function drawPrompt(c: Ctx, state: GameState, nowMs: number) {
   let cx = 0;
   let cy = 0;
 
-  // 优先：面朝的动物
+  // 优先：面朝的村民
+  const nearV = villagerNear(state, state.player.x, state.player.y, state.player.dir);
+  if (nearV) {
+    const def = VILLAGER_DEFS[nearV.id];
+    label = `和 ${def?.name ?? '村民'} 聊聊`;
+    cx = nearV.x;
+    cy = nearV.y - 66 + Math.sin(nowMs / 420) * 2;
+  } else {
+  // 其次：面朝的动物
   const near = animalNear(state, state.player.x, state.player.y, state.player.dir);
   if (near) {
     const def = ANIMAL_DEFS[near.kind];
@@ -1000,6 +1152,7 @@ function drawPrompt(c: Ctx, state: GameState, nowMs: number) {
     }
     cx = tx * TILE + TILE / 2;
     cy = ty * TILE - 6 + Math.sin(nowMs / 420) * 2;
+  }
   }
 
   c.font = 'bold 12px "PingFang SC","Microsoft YaHei",sans-serif';

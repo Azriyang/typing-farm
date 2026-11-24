@@ -14,7 +14,7 @@ import {
 } from './seasons';
 import {
   buildMap, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
-  TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea
+  TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea
 } from './world';
 import {
   resolveTarget, heldTool, hotbarSlotOfTool, heldSeedId, ActionInfo
@@ -27,17 +27,22 @@ import {
   ANIMAL_DEFS, ANIMAL_ORDER, createAnimal, updateAnimals, animalNear,
   animalById, happinessQuality, settleAnimalsOvernight
 } from './animals';
+import {
+  VILLAGER_DEFS, VILLAGER_ORDER, createVillager, updateVillagers, villagerNear,
+  villagerById, hearts, addFriendship, shopDiscount, giftReaction, GIFT_GAIN,
+  pickPhrase, pickReaction, settleVillagersOvernight
+} from './villagers';
 import * as Bag from './items';
 import { getDef, pickFish, sellPrice, isSellable } from './items';
 import type { FishDef } from './items';
 import {
   makeWord, makeWords, bandForValue, getCustomSets, upsertCustom, removeCustom,
-  toggleCustom, normalizeWords, totalWords, CATEGORY_LABEL, BANDS, bandStats, distribution
+  toggleCustom, normalizeWords, totalWords, CATEGORY_LABEL, BANDS, bandStats, distribution, difficulty
 } from './words';
 import type { WordCategory, CustomSet } from './words';
 import type {
   GameState, Plot, CropId, Word, ToolId, ResNode, ItemStack, HotbarRef, NodeKind,
-  Animal, AnimalKind
+  Animal, AnimalKind, Villager
 } from './types';
 
 /* ---------------- 运行时 ---------------- */
@@ -48,12 +53,13 @@ let lastTs = 0;
 const keys = new Set<string>();
 
 interface Pending {
-  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet';
+  kind: ActionInfo['kind'] | 'fishCast' | 'fishReel' | 'feed' | 'collect' | 'milk' | 'pet' | 'chat';
   tool: ToolId | null;
   plots: number[];
   nodeKey: string | null;
   crop?: CropId;
   animalId?: string;
+  villagerId?: string;
   stamina: number;
   time: number;
   label: string;
@@ -126,6 +132,22 @@ const session = new TypingSession({
       return;
     }
 
+    if (p.kind === 'chat') {
+      if (r.perfect) {
+        state.combo++;
+        state.stats.maxCombo = Math.max(state.stats.maxCombo, state.combo);
+        checkComboHeal();
+      } else {
+        state.combo = 0;
+      }
+      applyChat(p, r.perfect);
+      spend(p);
+      UI.flashSuccess();
+      const v = p.villagerId ? villagerById(state, p.villagerId) : null;
+      if (v && state.stamina > 0 && !UI.isModalOpen()) openVillagerPanel(v);
+      return;
+    }
+
     if (r.perfect) {
       state.combo++;
       state.stats.maxCombo = Math.max(state.stats.maxCombo, state.combo);
@@ -155,6 +177,15 @@ const session = new TypingSession({
       if (state.stamina <= 0) { faint(); return; }
       const a = p.animalId ? animalById(state, p.animalId) : null;
       if (a && !UI.isModalOpen()) openAnimalPanel(a);
+      return;
+    }
+
+    if (p && p.kind === 'chat') {
+      state.stamina = Math.max(0, state.stamina - Math.ceil(p.stamina / 2));
+      UI.toast('没接上话……村民笑了笑没在意', 'bad');
+      if (state.stamina <= 0) { faint(); return; }
+      const v = p.villagerId ? villagerById(state, p.villagerId) : null;
+      if (v && !UI.isModalOpen()) openVillagerPanel(v);
       return;
     }
 
@@ -195,11 +226,14 @@ function normalizeState(s: GameState): void {
   if (typeof s.stats.fishCaught !== 'number') s.stats.fishCaught = 0;
   if (typeof s.stats.animalsTended !== 'number') s.stats.animalsTended = 0;
   if (typeof s.stats.productsCollected !== 'number') s.stats.productsCollected = 0;
+  if (typeof s.stats.chats !== 'number') s.stats.chats = 0;
+  if (typeof s.stats.gifts !== 'number') s.stats.gifts = 0;
   if (!Array.isArray(s.hotbar) || s.hotbar.length !== 8) s.hotbar = emptyHotbar();
   if (typeof s.bagSize !== 'number') s.bagSize = s.bag.length;
   if (typeof s.equipSlot !== 'number') s.equipSlot = 0;
   if (!Array.isArray(s.nodes)) s.nodes = makeNodes();
   if (!Array.isArray(s.animals)) s.animals = [];
+  if (!Array.isArray(s.villagers)) s.villagers = VILLAGER_ORDER.map((id) => createVillager(id));
 }
 
 function newState(): GameState {
@@ -232,7 +266,7 @@ function newState(): GameState {
     plots,
     combo: 0,
     player: { x: 5 * TILE + 24, y: 8 * TILE + 24, dir: 'down', moving: false, walkT: 0 },
-    stats: { harvested: 0, sold: 0, earned: 0, actions: 0, maxCombo: 0, daysPlayed: 0, chopped: 0, mined: 0, fishCaught: 0, animalsTended: 0, productsCollected: 0 },
+    stats: { harvested: 0, sold: 0, earned: 0, actions: 0, maxCombo: 0, daysPlayed: 0, chopped: 0, mined: 0, fishCaught: 0, animalsTended: 0, productsCollected: 0, chats: 0, gifts: 0 },
     todayHarvest: 0,
     todayEarned: 0,
     bag,
@@ -242,6 +276,7 @@ function newState(): GameState {
     tools,
     nodes: makeNodes(),
     animals: [],
+    villagers: VILLAGER_ORDER.map((id) => createVillager(id)),
     autoSwitch: true,
     todayCleared: 0
   };
@@ -274,9 +309,10 @@ function spawnWeeds(s: GameState, count: number): void {
 
     if (!isOpenGround(tx, ty)) continue;
     if (s.nodes.some((n) => n.tx === tx && n.ty === ty)) continue;
-    // 不挡在门口与通道正中，也不长进畜栏
+    // 不挡在门口与通道正中，也不长进畜栏 / 小镇
     if (ty === 7 || ty === 8) continue;
     if (inAnimalArea(tx, ty)) continue;
+    if (inTownArea(tx)) continue;
 
     s.nodes.push({
       key: `w:${tx},${ty},${s.day}`,
@@ -817,7 +853,11 @@ function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
 
-  // 优先：面朝的动物
+  // 优先：面朝的村民
+  const nearV = villagerNear(state, state.player.x, state.player.y, state.player.dir);
+  if (nearV) { openVillagerPanel(nearV); return; }
+
+  // 其次：面朝的动物
   const near = animalNear(state, state.player.x, state.player.y, state.player.dir);
   if (near) { openAnimalPanel(near); return; }
 
@@ -1032,6 +1072,117 @@ function buyAnimal(kind: AnimalKind): void {
   openShop();
 }
 
+/* ---------------- 村民社交 ---------------- */
+
+function openVillagerPanel(v: Villager, reaction?: string): void {
+  const def = VILLAGER_DEFS[v.id];
+  if (!def) return;
+  const h = hearts(v.friendship);
+  const heartsStr = '♥'.repeat(h) + '<span class="dim">' + '♡'.repeat(5 - h) + '</span>';
+  const speech = reaction
+    ? `<p class="v-reaction">“${reaction}”</p>`
+    : `<p class="dim v-greet">“${def.greet}”</p>`;
+  const body = `
+    <div class="villager-head">
+      <span class="v-icon">${def.icon}</span>
+      <div class="v-info">
+        <b>${def.name}</b> <span class="dim">${def.role}</span>
+        <div class="v-hearts">${heartsStr}</div>
+      </div>
+    </div>
+    ${speech}
+    <div class="animal-status">
+      <div class="as-row"><span class="k">聊天</span><span class="v">${v.talkedToday ? '✓ 今天聊过了' : '✗ 还没聊'}</span></div>
+      <div class="as-row"><span class="k">送礼</span><span class="v">${v.giftedToday ? '✓ 今天送过了' : '✗ 还没送'}</span></div>
+    </div>
+    <p class="dim">打出${def.name}说的话就能聊起来。送礼时留意对方的反应，就知道送得对不对。</p>`;
+  UI.showModal(
+    `${def.icon} ${def.name}`,
+    body,
+    [
+      { label: v.talkedToday ? '已聊过' : '聊天', cls: v.talkedToday ? 'ghost' : 'green', onClick: () => { if (!v.talkedToday) { UI.hideModal(); startChat(v); } } },
+      { label: v.giftedToday ? '已送礼' : '送礼', cls: v.giftedToday ? 'ghost' : '', onClick: () => { if (!v.giftedToday) { UI.hideModal(); openGiftPanel(v); } } },
+      { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+}
+
+function startChat(v: Villager): void {
+  if (session.active) return;
+  const def = VILLAGER_DEFS[v.id];
+  const phrase = pickPhrase(def);
+  const cost = { stamina: 1, time: 10 };
+  if (state.stamina < cost.stamina) {
+    UI.toast('太累了，先歇歇吧', 'bad');
+    openVillagerPanel(v);
+    return;
+  }
+  pending = {
+    kind: 'chat', tool: null, plots: [], nodeKey: null,
+    villagerId: v.id, stamina: cost.stamina, time: cost.time, label: `和 ${def.name} 聊天`
+  };
+  currentLabel = `和 ${def.name} 聊天`;
+  UI.resetTypingCache();
+  const word: Word = { text: phrase.en, zh: phrase.zh, diff: difficulty(phrase.en) };
+  session.start([word], 0, 1, performance.now());
+}
+
+function applyChat(p: Pending, perfect: boolean): void {
+  const v = p.villagerId ? villagerById(state, p.villagerId) : null;
+  if (!v) return;
+  const def = VILLAGER_DEFS[v.id];
+  addFriendship(v, perfect ? 10 : 6);
+  v.talkedToday = true;
+  state.stats.chats++;
+  floatText(v.x, v.y - 52, perfect ? '聊得投机 ♥' : '聊了聊', '#f0a0b0');
+  Sound.play('click');
+  UI.toast(perfect ? `${def.name}：“和你聊天真有意思！”` : `${def.name} 和你聊了几句。`, 'good');
+}
+
+function openGiftPanel(v: Villager): void {
+  const def = VILLAGER_DEFS[v.id];
+  const items = state.bag.map((s, i) => ({ s, i })).filter((x) => x.s);
+  if (items.length === 0) {
+    UI.toast('背包空空的，没东西可送', 'bad');
+    openVillagerPanel(v);
+    return;
+  }
+  const rows = items.map(({ s, i }) => {
+    const d = getDef(s!.id);
+    const star = s!.quality ? ' ' + '★'.repeat(s!.quality) : '';
+    return `<div class="gift-row" data-gift="${i}">
+      <span class="ic">${d?.icon ?? '?'}</span>
+      <span class="nm">${d?.name ?? s!.id}${star} ×${s!.qty}</span>
+    </div>`;
+  }).join('');
+  UI.showModal(
+    `送给 ${def.name}`,
+    `<p class="dim">选一件礼物。对方喜不喜欢，送出去听听怎么说就知道了。</p>
+     <div class="gift-list">${rows}</div>`,
+    [{ label: '返回', cls: 'ghost', onClick: () => { UI.hideModal(); openVillagerPanel(v); } }]
+  );
+  document.querySelectorAll<HTMLElement>('[data-gift]').forEach((el) => {
+    el.addEventListener('click', () => giveGift(v, Number(el.dataset.gift)));
+  });
+}
+
+function giveGift(v: Villager, bagIndex: number): void {
+  const s = state.bag[bagIndex];
+  if (!s) return;
+  const def = VILLAGER_DEFS[v.id];
+  const reaction = giftReaction(def, s.id);
+  addFriendship(v, GIFT_GAIN[reaction]);
+  Bag.removeFromBag(state.bag, s.id, 1, s.quality);
+  v.giftedToday = true;
+  state.stats.gifts++;
+  Sound.play(reaction === 'dislike' ? 'error' : 'coin');
+  const line = pickReaction(def, reaction);
+  UI.hideModal();
+  openVillagerPanel(v, line);
+  UI.resetHotbarCache();
+  save();
+}
+
 /* ---------------- 出货 ---------------- */
 
 interface SellLine { stack: ItemStack; total: number }
@@ -1106,9 +1257,10 @@ function sellAll(): void {
 
 /* ---------------- 商店 ---------------- */
 
-/** 种子实价（含播种祭半价） */
+/** 种子实价（含播种祭半价 + 掌柜好感折扣） */
 function seedPrice(id: CropId): number {
-  return Math.max(1, Math.round(CROPS[id].seed * festivalEffects(state.day).seedMult));
+  const base = CROPS[id].seed * festivalEffects(state.day).seedMult * shopDiscount(state);
+  return Math.max(1, Math.round(base));
 }
 
 function openShop(): void {
@@ -1744,6 +1896,9 @@ function sleep(fainted = false): void {
   // 动物结算：喂了 → 明天有产物；没喂 → 掉心情
   settleAnimalsOvernight(state);
 
+  // 村民结算：重置每日聊天 / 送礼次数
+  settleVillagersOvernight(state);
+
   state.day++;
   state.stats.daysPlayed++;
   state.time = CFG.DAY_START;
@@ -1914,6 +2069,7 @@ function frame(ts: number): void {
     updatePlayer(dt);
     if (!session.active && !UI.isModalOpen() && fishing.phase === 'idle') {
       updateAnimals(state, dt);
+      updateVillagers(state, dt);
     }
   }
 
@@ -2106,7 +2262,14 @@ function setupTitle(): void {
          <li>🌾 丰收祭：出货 +50% &nbsp; ✨ 星霜祭：所有产出品质 +1 星</li>
          <li>睡前会预告明天的节日，节日当天 HUD 上有徽章</li>
        </ul>
-       <h3>一天的循环</h3>
+       <h3>小镇</h3>
+        <ul>
+          <li>沿农场东边的路一直走就到小镇，有 4 位村民</li>
+          <li>面朝村民按空格 → <b>聊天</b>：打出他们说的英文涨好感</li>
+          <li><b>送礼</b>：送出去后听对方怎么说，就知道送得对不对；每人每天限聊一次、送一次</li>
+          <li>好感用心形表示；掌柜好感够高时种子打折</li>
+        </ul>
+        <h3>一天的循环</h3>
        <ul>
          <li>每做一次农活消耗体力并推进时间，22:00 后体力消耗翻倍</li>
          <li>回屋睡觉 → 浇过水的作物生长；杂草每天重新长出来</li>

@@ -11,7 +11,7 @@ import type { GameState, ResNode, ToolId } from './types';
 export type ActionKind =
   | 'till' | 'plant' | 'water' | 'harvest'
   | 'chop' | 'mine' | 'cut' | 'fish'
-  | 'door' | 'bin' | 'order' | 'locked' | 'sleep' | 'dex' | 'ladder' | 'craft' | 'cook' | 'board' | 'relic';
+  | 'door' | 'bin' | 'order' | 'locked' | 'sleep' | 'dex' | 'ladder' | 'craft' | 'cook' | 'board' | 'relic' | 'service';
 
 export interface ActionInfo {
   kind: ActionKind;
@@ -90,6 +90,7 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   if (t.kind === 'bench') return base('craft', '加工', null);
   if (t.kind === 'stove') return base('cook', '做饭', null);
   if (t.kind === 'chest') return base('relic', '旧木箱', null);
+  if (t.kind === 'service') return base('service', '招呼', null);
   if (t.kind === 'object' && t.object) {
     if (t.object.kind === 'bin') return base('bin', '出货', null);
     if (t.object.kind === 'store') return base('order', '杂货店', null);

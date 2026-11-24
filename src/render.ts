@@ -550,6 +550,95 @@ function drawFurniture(c: Ctx, scene: string) {
         c.fillRect(x + w / 2 - 1, y + 14, 2, 3);
         break;
       }
+      case 'counter': {
+        // 长吧台：台面 + 前板 + 台面上的杯子
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 2, y + 8, w - 4, h - 10);
+        c.fillStyle = '#8a5f38';
+        c.fillRect(x + 3, y + 9, w - 6, h - 12);
+        // 台面
+        c.fillStyle = '#c1966a';
+        c.fillRect(x + 1, y + 6, w - 2, 5);
+        c.fillStyle = '#d8b184';
+        c.fillRect(x + 1, y + 6, w - 2, 2);
+        // 前板木纹
+        c.fillStyle = '#6b4a2e';
+        for (let i = 0; i < Math.floor(w / 18); i++) {
+          c.fillRect(x + 6 + i * 18, y + 13, 12, 1);
+          c.fillRect(x + 6 + i * 18, y + 20, 12, 1);
+        }
+        // 杯子
+        c.fillStyle = '#e8e2d0';
+        c.fillRect(x + 10, y + 2, 6, 5);
+        c.fillRect(x + 26, y + 2, 6, 5);
+        c.fillStyle = '#c9a44e';
+        c.fillRect(x + 10, y + 3, 6, 1);
+        c.fillRect(x + 26, y + 3, 6, 1);
+        break;
+      }
+      case 'barrel': {
+        // 酒桶
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 8, y + 8, 32, h - 10);
+        c.fillStyle = '#8a5f38';
+        c.fillRect(x + 10, y + 10, 28, h - 14);
+        // 桶箍
+        c.fillStyle = '#6b6b6b';
+        c.fillRect(x + 8, y + 14, 32, 3);
+        c.fillRect(x + 8, y + 26, 32, 3);
+        c.fillStyle = '#9a9a9a';
+        c.fillRect(x + 8, y + 14, 32, 1);
+        c.fillRect(x + 8, y + 26, 32, 1);
+        // 桶盖
+        c.fillStyle = '#a97c4f';
+        c.beginPath(); c.ellipse(x + 24, y + 9, 15, 5, 0, 0, Math.PI * 2); c.fill();
+        break;
+      }
+      case 'forge': {
+        // 铁匠炉：砖砌炉膛 + 火光
+        c.fillStyle = '#4a3a34';
+        c.fillRect(x + 2, y + 6, w - 4, h - 8);
+        c.fillStyle = '#6b5548';
+        c.fillRect(x + 4, y + 8, w - 8, h - 14);
+        // 砖缝
+        c.fillStyle = 'rgba(0,0,0,.2)';
+        c.fillRect(x + 4, y + 16, w - 8, 1);
+        c.fillRect(x + w / 2, y + 8, 1, 8);
+        // 炉口火光
+        c.fillStyle = '#2a1a14';
+        c.fillRect(x + 14, y + 12, w - 28, h - 24);
+        c.fillStyle = '#e8823a';
+        c.fillRect(x + 17, y + 15, w - 34, h - 30);
+        c.fillStyle = '#f5c04a';
+        c.fillRect(x + 21, y + 18, w - 42, h - 36);
+        break;
+      }
+      case 'anvil': {
+        // 铁砧
+        c.fillStyle = '#3d3a38';
+        c.fillRect(x + 14, y + h - 12, 20, 10);
+        c.fillStyle = '#4e4a47';
+        c.fillRect(x + 8, y + 10, 32, 8);
+        c.fillRect(x + 12, y + 18, 24, h - 22);
+        c.fillStyle = '#6a6663';
+        c.fillRect(x + 8, y + 10, 32, 2);
+        break;
+      }
+      case 'blackboard': {
+        // 黑板 + 粉笔字
+        c.fillStyle = '#5a3c22';
+        c.fillRect(x + 1, y + 6, w - 2, h - 8);
+        c.fillStyle = '#3a4a42';
+        c.fillRect(x + 4, y + 8, w - 8, h - 14);
+        c.fillStyle = 'rgba(230,230,220,.55)';
+        // 几行"字"
+        for (let i = 0; i < 3; i++) {
+          c.fillRect(x + 10, y + 14 + i * 8, w * 0.62 - i * 18, 2);
+        }
+        c.fillStyle = 'rgba(230,230,220,.35)';
+        c.fillRect(x + 10, y + 38, w * 0.3, 2);
+        break;
+      }
       case 'stove': {
         // 灶台：石砌灶身 + 铁锅 + 火光
         c.fillStyle = '#5a5450';

@@ -31,7 +31,7 @@ export type Dir = 'down' | 'up' | 'left' | 'right';
 export type Weather = 'sunny' | 'rain' | 'snow';
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 /** 场景：农场（室外）/ 住宅 / 鸡舍 / 牛棚 */
-export type SceneId = 'farm' | 'house' | 'coop' | 'barn' | 'mine';
+export type SceneId = 'farm' | 'house' | 'coop' | 'barn' | 'mine' | 'tavern' | 'smith' | 'clinic' | 'school';
 export type FruitShape = 'round' | 'long' | 'berry' | 'gourd' | 'root' | 'leafy' | 'flower';
 
 export interface CropDef {

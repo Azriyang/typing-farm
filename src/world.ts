@@ -42,7 +42,8 @@ export type TileId = (typeof T)[keyof typeof T];
 
 /* ---------------- 室内家具 ---------------- */
 
-export type FurnitureKind = 'bed' | 'shelf' | 'table' | 'trough' | 'nest' | 'hay' | 'rug' | 'bench' | 'stove' | 'chest';
+export type FurnitureKind = 'bed' | 'shelf' | 'table' | 'trough' | 'nest' | 'hay' | 'rug' | 'bench' | 'stove' | 'chest'
+  | 'counter' | 'barrel' | 'forge' | 'anvil' | 'blackboard';
 
 export interface Furniture {
   kind: FurnitureKind;
@@ -50,7 +51,7 @@ export interface Furniture {
   ty: number;
   w: number;
   h: number;
-  scene: 'house' | 'coop' | 'barn';
+  scene: IndoorScene;
 }
 
 /** 家具按整个方块绘制（不是逐格拼），坐标是左上角 */
@@ -62,6 +63,33 @@ export const FURNITURE: Furniture[] = [
   { kind: 'bench', tx: 27, ty: 12, w: 2, h: 1, scene: 'house' },
   { kind: 'stove', tx: 30, ty: 13, w: 2, h: 1, scene: 'house' },
   { kind: 'chest', tx: 18, ty: 14, w: 2, h: 1, scene: 'house' },
+
+  // 酒馆：长吧台 + 酒桶 + 几张桌
+  { kind: 'counter', tx: 20, ty: 8, w: 6, h: 1, scene: 'tavern' },
+  { kind: 'barrel', tx: 18, ty: 7, w: 1, h: 1, scene: 'tavern' },
+  { kind: 'barrel', tx: 19, ty: 7, w: 1, h: 1, scene: 'tavern' },
+  { kind: 'table', tx: 22, ty: 12, w: 2, h: 1, scene: 'tavern' },
+  { kind: 'table', tx: 27, ty: 12, w: 2, h: 1, scene: 'tavern' },
+  { kind: 'stove', tx: 28, ty: 7, w: 2, h: 1, scene: 'tavern' },
+
+  // 铁匠铺：炉子 + 铁砧 + 水桶
+  { kind: 'forge', tx: 19, ty: 8, w: 2, h: 1, scene: 'smith' },
+  { kind: 'anvil', tx: 24, ty: 8, w: 1, h: 1, scene: 'smith' },
+  { kind: 'barrel', tx: 28, ty: 12, w: 1, h: 1, scene: 'smith' },
+  { kind: 'table', tx: 20, ty: 12, w: 2, h: 1, scene: 'smith' },
+
+  // 诊所：两张病床 + 药柜
+  { kind: 'bed', tx: 18, ty: 8, w: 2, h: 2, scene: 'clinic' },
+  { kind: 'bed', tx: 27, ty: 8, w: 2, h: 2, scene: 'clinic' },
+  { kind: 'shelf', tx: 23, ty: 7, w: 2, h: 1, scene: 'clinic' },
+  { kind: 'table', tx: 22, ty: 12, w: 2, h: 1, scene: 'clinic' },
+
+  // 学堂：黑板 + 课桌 + 书架
+  { kind: 'blackboard', tx: 19, ty: 7, w: 7, h: 1, scene: 'school' },
+  { kind: 'table', tx: 19, ty: 11, w: 2, h: 1, scene: 'school' },
+  { kind: 'table', tx: 23, ty: 11, w: 2, h: 1, scene: 'school' },
+  { kind: 'table', tx: 27, ty: 11, w: 2, h: 1, scene: 'school' },
+  { kind: 'shelf', tx: 29, ty: 7, w: 2, h: 1, scene: 'school' },
   { kind: 'rug', tx: 21, ty: 10, w: 4, h: 3, scene: 'house' },
   // 鸡舍
   { kind: 'nest', tx: 19, ty: 7, w: 3, h: 1, scene: 'coop' },
@@ -151,7 +179,7 @@ export interface TownBuilding {
 /** 北侧一条街 + 南侧民宅，中间是主街与广场 */
 export const TOWN_BUILDINGS: TownBuilding[] = [
   // ── 北侧（y2-5）──
-  { x: 34, y: 2, w: 4, h: 4, kind: 'store',  roof: '#4a8fbe', door: { dx: 2, dy: 3 } },
+  { x: 34, y: 2, w: 4, h: 4, kind: 'store',  roof: '#4a8fbe' },
   { x: 39, y: 2, w: 4, h: 4, kind: 'tavern', roof: '#c9563f', door: { dx: 2, dy: 3 } },
   { x: 44, y: 2, w: 4, h: 4, kind: 'smith',  roof: '#8a8a8a', door: { dx: 2, dy: 3 } },
   { x: 49, y: 2, w: 4, h: 4, kind: 'clinic', roof: '#e8e2d4', door: { dx: 2, dy: 3 } },
@@ -248,7 +276,19 @@ export interface Room {
   spawn: { tx: number; ty: number; dir: Dir };
 }
 
-export const ROOMS: Record<'house' | 'coop' | 'barn', Room> = {
+/* ---------------- 室内 ---------------- */
+
+/** 可进入的室内场景 */
+export type IndoorScene = 'house' | 'coop' | 'barn' | 'tavern' | 'smith' | 'clinic' | 'school';
+
+/** 小镇店铺场景（进店时店主会出现在柜台后） */
+export const SHOP_SCENES: IndoorScene[] = ['tavern', 'smith', 'clinic', 'school'];
+
+export function isShopScene(id: string): boolean {
+  return (SHOP_SCENES as string[]).includes(id);
+}
+
+export const ROOMS: Record<IndoorScene, Room> = {
   house: {
     x0: 17, y0: 6, x1: 32, y1: 16,
     floor: T.FLOOR,
@@ -266,6 +306,30 @@ export const ROOMS: Record<'house' | 'coop' | 'barn', Room> = {
     floor: T.FLOOR_STONE,
     door: { tx: 24, ty: 17 },
     spawn: { tx: 24, ty: 16, dir: 'up' }
+  },
+  tavern: {
+    x0: 16, y0: 6, x1: 31, y1: 16,
+    floor: T.FLOOR,
+    door: { tx: 23, ty: 16 },
+    spawn: { tx: 23, ty: 15, dir: 'up' }
+  },
+  smith: {
+    x0: 17, y0: 6, x1: 30, y1: 15,
+    floor: T.FLOOR_STONE,
+    door: { tx: 23, ty: 15 },
+    spawn: { tx: 23, ty: 14, dir: 'up' }
+  },
+  clinic: {
+    x0: 17, y0: 6, x1: 30, y1: 15,
+    floor: T.FLOOR_STONE,
+    door: { tx: 23, ty: 15 },
+    spawn: { tx: 23, ty: 14, dir: 'up' }
+  },
+  school: {
+    x0: 16, y0: 6, x1: 31, y1: 16,
+    floor: T.FLOOR,
+    door: { tx: 23, ty: 16 },
+    spawn: { tx: 23, ty: 15, dir: 'up' }
   }
 };
 
@@ -335,7 +399,7 @@ export function buildScene(id: SceneId): void {
 
   // 室内：整张图先填墙，再挖出房间地板
   terrain.fill(T.WALL_IN);
-  const r = ROOMS[id as 'house' | 'coop' | 'barn'];
+  const r = ROOMS[id as IndoorScene];
   setRect(r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1, r.floor);
   // 门
   set(r.door.tx, r.door.ty, T.DOOR);
@@ -533,7 +597,11 @@ export function unlockArea(k: number): void {
 /* ---------------- 交互目标 ---------------- */
 
 export interface Target {
-  kind: 'plot' | 'object' | 'door' | 'bed' | 'shelf' | 'ladder' | 'bench' | 'stove' | 'chest';
+  kind: 'plot' | 'object' | 'door' | 'shopdoor' | 'bed' | 'shelf' | 'ladder' | 'bench' | 'stove' | 'chest' | 'service';
+  /** 服务类型（service 时有效） */
+  service?: string;
+  /** 小镇店铺类型（shopdoor 时有效） */
+  shop?: TownBuildingKind;
   tx: number;
   ty: number;
   plotIndex: number;
@@ -558,15 +626,29 @@ export function facingTile(p: Player): { tx: number; ty: number } {
 export function targetAt(tx: number, ty: number): Target | null {
   const t = tileAt(tx, ty);
   if (t === T.DOOR) return { kind: 'door', tx, ty, plotIndex: -1 };
+  // 小镇建筑的门（不是 tile，靠建筑坐标判定）
+  for (const b of TOWN_BUILDINGS) {
+    if (b.door && tx === b.x + b.door.dx && ty === b.y + b.door.dy) {
+      return { kind: 'shopdoor', tx, ty, plotIndex: -1, shop: b.kind };
+    }
+  }
   if (t === T.LADDER) return { kind: 'ladder', tx, ty, plotIndex: -1 };
   // 室内家具
   const f = furnitureAt(scene, tx, ty);
   if (f) {
-    if (f.kind === 'bed') return { kind: 'bed', tx, ty, plotIndex: -1 };
+    // 病床：诊所属「看病」，住宅属「睡觉」
+    if (f.kind === 'bed') {
+      if (scene === 'clinic') return { kind: 'service', tx, ty, plotIndex: -1, service: 'clinic' };
+      return { kind: 'bed', tx, ty, plotIndex: -1 };
+    }
     if (f.kind === 'shelf') return { kind: 'shelf', tx, ty, plotIndex: -1 };
     if (f.kind === 'bench') return { kind: 'bench', tx, ty, plotIndex: -1 };
     if (f.kind === 'stove') return { kind: 'stove', tx, ty, plotIndex: -1 };
     if (f.kind === 'chest') return { kind: 'chest', tx, ty, plotIndex: -1 };
+    // 小镇店铺的服务点
+    if (f.kind === 'counter') return { kind: 'service', tx, ty, plotIndex: -1, service: 'tavern' };
+    if (f.kind === 'anvil') return { kind: 'service', tx, ty, plotIndex: -1, service: 'smith' };
+    if (f.kind === 'blackboard') return { kind: 'service', tx, ty, plotIndex: -1, service: 'school' };
   }
   // 农场专属：物件与耕地
   if (scene === 'farm') {

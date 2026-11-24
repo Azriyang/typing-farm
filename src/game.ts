@@ -16,9 +16,10 @@ import {
   buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
   TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
   unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS, isBlockedTile, VIEW_W, VIEW_H,
-  ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt,
-  MINE_ROOM, MINE_FLOORS, mineOrePlan, getMineFloor, setMineFloor
+  ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt, isShopScene,
+  MINE_ROOM, MINE_FLOORS, mineOrePlan, getMineFloor, setMineFloor, TOWN_BUILDINGS
 } from './world';
+import type { IndoorScene } from './world';
 import {
   DIFFICULTY_ORDER, difficultyOf, applyDifficulty, shiftBand
 } from './difficulty';
@@ -1074,6 +1075,8 @@ function useDoor(tx: number, ty: number): void {
     if (tx === FARM_DOORS.mine.tx && ty === FARM_DOORS.mine.ty) { enterMine(1); return; }
   } else if (s === 'mine') {
     exitMine();
+  } else if (isShopScene(s)) {
+    exitShop();
   } else {
     exitToFarm();
   }
@@ -1525,6 +1528,210 @@ function showRelic(id: string): void {
   );
 }
 
+/** 小镇建筑 → 对应的室内场景（store 不走这里，它用旧的 OBJECTS 交互） */
+const SHOP_SCENE: Record<string, IndoorScene> = {
+  tavern: 'tavern',
+  smith: 'smith',
+  clinic: 'clinic',
+  school: 'school'
+};
+
+/** 从农场小镇进店 */
+function enterShop(kind: string): void {
+  const id = SHOP_SCENE[kind];
+  if (!id) return;
+
+  state.scene = id;
+  buildScene(id);
+  applySeason(seasonOfDay(state.day));
+  const r = ROOMS[id];
+  state.player.x = r.spawn.tx * TILE + TILE / 2;
+  state.player.y = r.spawn.ty * TILE + TILE / 2;
+  state.player.dir = r.spawn.dir;
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
+  const SHOP_NAME: Record<string, string> = { tavern: '酒馆', smith: '铁匠铺', clinic: '诊所', school: '学堂' };
+  const name = SHOP_NAME[id] ?? '店里';
+  UI.toast(`走进了${name}`, 'good');
+}
+
+/** 从小镇店铺回到镇上 */
+function exitShop(): void {
+  const from = state.scene;
+  state.scene = 'farm';
+  buildScene('farm');
+  for (let k = 1; k < state.farmUnlocked; k++) unlockArea(k);
+  syncBlockers(state);
+  applySeason(seasonOfDay(state.day));
+
+  // 站回店铺门口下方
+  const b = TOWN_BUILDINGS.find((x) => x.kind === from && x.door);
+  if (b && b.door) {
+    state.player.x = (b.x + b.door.dx) * TILE + TILE / 2;
+    state.player.y = (b.y + b.door.dy + 1) * TILE + TILE / 2;
+  }
+  state.player.dir = 'down';
+  state.player.moving = false;
+  Sound.play('click');
+  UI.resetHotbarCache();
+  save();
+}
+
+/* ---------------- 小镇店铺服务 ---------------- */
+
+function openService(kind: string): void {
+  if (kind === 'tavern') return openTavern();
+  if (kind === 'smith') return openSmithService();
+  if (kind === 'clinic') return openClinic();
+  if (kind === 'school') return openSchool();
+}
+
+/** 酒馆：花钱吃饭回体力（比自己做贵，但马上能吃） */
+const MEALS = [
+  { name: '家常套餐', icon: '🍲', cost: 90, stamina: 30, desc: '一菜一汤' },
+  { name: '丰盛套餐', icon: '🍖', cost: 220, stamina: 60, desc: '有肉有酒' },
+  { name: '阿梅特餐', icon: '🍱', cost: 420, stamina: 100, desc: '吃饱为止' }
+];
+
+function openTavern(): void {
+  const can = state.stamina < CFG.STAMINA_MAX;
+  const rows = MEALS.map((m, i) => {
+    const afford = state.coins >= m.cost;
+    const ok = afford && can;
+    return `<div class="shop-row${ok ? '' : ' cant'}">
+      <div><div class="nm">${m.icon} ${m.name}</div>
+        <div class="dt">${m.desc} · 回 ${m.stamina} 体力</div></div>
+      <div class="pr">${m.cost}G</div>
+      <div class="buy-group"><button class="btn small green" data-meal="${i}" ${ok ? '' : 'disabled'}>${!afford ? '钱不够' : can ? '吃' : '吃不下了'}</button></div>
+    </div>`;
+  }).join('');
+
+  UI.showModal(
+    '🍺 酒馆',
+    `<p class="dim">阿梅在吧台后面擦杯子。「坐下吧，今天有热的。」</p>
+     ${rows}
+     <p class="dim cov-note">自己做更省钱，但得回家开灶台。这里图个方便。</p>`,
+    [{ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-meal]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const m = MEALS[Number(el.dataset.meal)];
+      if (!m) return;
+      if (state.coins < m.cost) { UI.toast('钱不够', 'bad'); return; }
+      if (state.stamina >= CFG.STAMINA_MAX) { UI.toast('已经很饱了', 'bad'); return; }
+      state.coins -= m.cost;
+      state.stamina = Math.min(CFG.STAMINA_MAX, state.stamina + m.stamina);
+      state.time += 30;
+      Sound.play('coin');
+      UI.toast(`吃了${m.name}，体力 +${m.stamina}`, 'good');
+      save();
+      openTavern();
+    });
+  });
+}
+
+/** 铁匠铺：修工具（比订购箱便宜，因为这是他的本行） */
+function openSmithService(): void {
+  const SHOP_REPAIR_DISCOUNT = 0.75;
+  const rows = (Object.keys(TOOLS) as ToolId[]).map((id) => {
+    const st = state.tools[id];
+    if (!st.owned) return '';
+    const max = toolMaxDurability(st.tier);
+    if (st.durability >= max) return '';
+    const full = repairCost(st.tier);
+    const cost = Math.max(1, Math.round(full * SHOP_REPAIR_DISCOUNT));
+    const afford = state.coins >= cost;
+    return `<div class="shop-row${afford ? '' : ' cant'}">
+      <div><div class="nm">${TOOLS[id].icon} ${['铜', '银', '金', '秘银'][st.tier - 1]}${TOOLS[id].name}</div>
+        <div class="dt">耐久 ${Math.ceil(st.durability)}/${max} · 老周收 ${cost}G（比订购箱便宜）</div></div>
+      <div class="buy-group"><button class="btn small" data-fix="${id}" ${afford ? '' : 'disabled'}>${afford ? '修' : '钱不够'}</button></div>
+    </div>`;
+  }).join('');
+
+  UI.showModal(
+    '🔨 铁匠铺',
+    `<p class="dim">老周头也不抬：「东西放那儿。烫。」</p>
+     ${rows || '<p class="dim">你的工具都还好好的，用不着修。</p>'}`,
+    [{ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+
+  document.querySelectorAll<HTMLElement>('[data-fix]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.fix as ToolId;
+      const st = state.tools[id];
+      if (!st) return;
+      const cost = Math.max(1, Math.round(repairCost(st.tier) * SHOP_REPAIR_DISCOUNT));
+      if (state.coins < cost) { UI.toast('钱不够', 'bad'); return; }
+      state.coins -= cost;
+      st.durability = toolMaxDurability(st.tier);
+      Sound.play('levelup');
+      UI.toast(`${TOOLS[id].name}修好了`, 'good');
+      UI.resetHotbarCache();
+      save();
+      openSmithService();
+    });
+  });
+}
+
+/** 诊所：花钱回满体力 */
+function openClinic(): void {
+  const cost = 60;
+  const need = state.stamina < CFG.STAMINA_MAX;
+  UI.showModal(
+    '💊 诊所',
+    `<p class="dim">小林放下手里的本子：「又在硬撑吧？」</p>
+     <div class="shop-row${need && state.coins >= cost ? '' : ' cant'}">
+       <div><div class="nm">🛏️ 躺一会儿</div>
+         <div class="dt">体力回满 · 现在 ${Math.round(state.stamina)}/${CFG.STAMINA_MAX}</div></div>
+       <div class="pr">${cost}G</div>
+       <div class="buy-group"><button class="btn small green" data-heal="1" ${need && state.coins >= cost ? '' : 'disabled'}>
+         ${!need ? '状态很好' : '就诊'}</button></div>
+     </div>
+     <p class="dim cov-note">睡觉不要钱，但得等到晚上。这里能立刻恢复。</p>`,
+    [{ label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }]
+  );
+  document.querySelector('[data-heal]')?.addEventListener('click', () => {
+    if (state.stamina >= CFG.STAMINA_MAX) { UI.toast('状态很好，不用看', 'bad'); return; }
+    if (state.coins < cost) { UI.toast('钱不够', 'bad'); return; }
+    state.coins -= cost;
+    state.stamina = CFG.STAMINA_MAX;
+    state.time += 60;
+    Sound.play('levelup');
+    UI.toast('休息了一会儿，体力回满了', 'good');
+    save();
+    openClinic();
+  });
+}
+
+/** 学堂：看学习进度 */
+function openSchool(): void {
+  const ls = learnStats();
+  const total = 2945;
+  const pct = total > 0 ? Math.round((ls.mastered / total) * 1000) / 10 : 0;
+
+  UI.showModal(
+    '📖 学堂',
+    `<p class="dim">老韩推了推眼镜：「今天认了几个字？」</p>
+     <div class="learn-bar">
+       <div class="lb-item"><span class="lb-k">已学</span><b>${ls.seen}</b></div>
+       <div class="lb-item"><span class="lb-k">已掌握</span><b class="ok">${ls.mastered}</b></div>
+       <div class="lb-item"><span class="lb-k">今日新词</span><b>${ls.todayNew}<span class="lb-sub">/${ls.quota}</span></b></div>
+     </div>
+     <p class="dim">四级词汇共 ${total} 个，你已掌握 <b>${pct}%</b>。</p>
+     <p class="dim cov-note">
+       「掌握」= 在 3 个不同天各打对这个词。黑板上的粉笔字写着：
+       「每天读一点，一年就是三百六十五点。」
+     </p>`,
+    [
+      { label: '词库', cls: '', onClick: () => { UI.hideModal(); openWords(); } },
+      { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -1534,12 +1741,14 @@ function tryInteract(): void {
   // 门：进出场景（优先于其它交互）
   const tgt = targetAtSafe(tx, ty);
   if (tgt?.kind === 'door') { useDoor(tx, ty); return; }
+  if (tgt?.kind === 'shopdoor' && tgt.shop) { enterShop(tgt.shop); return; }
   if (tgt?.kind === 'ladder') { useLadder(tx, ty); return; }
   if (tgt?.kind === 'bed') { askSleep(); return; }
   if (tgt?.kind === 'shelf') { openDex(); return; }
   if (tgt?.kind === 'bench') { openCraftPanel(); return; }
   if (tgt?.kind === 'stove') { openCookPanel(); return; }
   if (tgt?.kind === 'chest') { openRelics(); return; }
+  if (tgt?.kind === 'service' && tgt.service) { openService(tgt.service); return; }
 
   // 优先：面朝的村民（只在农场有村民）
   if (!isIndoor(state.scene)) {

@@ -104,6 +104,12 @@ export interface VillagerDef {
   reactions: Record<'like' | 'neutral' | 'dislike', string[]>;
   /** 一天的日程；不在任何条目覆盖的时间里就不出门 */
   schedule?: ScheduleEntry[];
+  /** 生日（一年 32 天里的第几天） */
+  birthday: number;
+  /** 生日当天的招呼语 */
+  birthdayLine: string;
+  /** 生日当天聊天要打的英文 */
+  birthdayPhrase: DialoguePhrase;
 }
 
 export const VILLAGER_DEFS: Record<string, VillagerDef> = {
@@ -111,6 +117,9 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     id: 'farmer', name: '阿茂', role: '老农', icon: '🧑‍🌾', shirt: '#7a9a4e',
     likes: ['crop.'], dislikes: ['fish.'],
     greet: '哟，来帮我看看庄稼？',
+    birthday: 5,
+    birthdayLine: '生日？……我自个儿都忘了。你有心了。',
+    birthdayPhrase: { en: 'you remembered my birthday', zh: '你记得我的生日' },
     reactions: {
       like: ['哈哈，好庄稼人就该懂这些！', '嗯，这东西实在，我喜欢。', '到底是土地里出来的，好啊！'],
       neutral: ['哦，谢谢你了。', '嗯，收下了。'],
@@ -134,6 +143,9 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     id: 'fisher', name: '小渔', role: '渔夫', icon: '🎣', shirt: '#4a7fae',
     likes: ['fish.'], dislikes: ['mat.wood'],
     greet: '今天河面很静，适合下钩。',
+    birthday: 13,
+    birthdayLine: '哈，你还记得！晚上我请你吃鱼。',
+    birthdayPhrase: { en: 'thanks for remembering me', zh: '谢谢你记得我' },
     reactions: {
       like: ['哈！你懂我！', '这可是好东西，谢啦！', '水里来的，我最爱！'],
       neutral: ['谢了，朋友。', '嗯，我收下了。'],
@@ -156,6 +168,9 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     id: 'shopkeeper', name: '掌柜', role: '杂货店主', icon: '🧺', shirt: '#b0743f',
     likes: ['prod.'], dislikes: ['mat.stone'],
     greet: '欢迎光临，要点什么？',
+    birthday: 21,
+    birthdayLine: '记得我生日的人不多。这份心意我收下了。',
+    birthdayPhrase: { en: 'few people remember my birthday', zh: '记得我生日的人不多' },
     reactions: {
       like: ['哎呀，这正是我需要的，多谢！', '好货！你真是我的贵人。', '这个我收得开心！'],
       neutral: ['谢谢惠顾，我收下了。', '嗯，不错的心意。'],
@@ -177,6 +192,9 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     id: 'girl', name: '阿晴', role: '爱花的姑娘', icon: '🌸', shirt: '#c96a8f',
     likes: ['crop.strawberry', 'mat.fiber', 'flower.'], dislikes: ['mat.stone'],
     greet: '嗨！今天的花开得真好。',
+    birthday: 29,
+    birthdayLine: '你记得呀！我今天特别开心～',
+    birthdayPhrase: { en: 'you know it is my birthday', zh: '你知道今天是我生日' },
     reactions: {
       like: ['哇，我好喜欢！谢谢你！', '你怎么知道我想要这个～', '好开心呀！'],
       neutral: ['谢谢你的礼物。', '嗯，我会好好收着的。'],
@@ -249,11 +267,15 @@ export function isFlowerItem(itemId: string): boolean {
 }
 
 /** 这件礼物实际加多少好感 */
-export function giftGain(def: VillagerDef, itemId: string): number {
+export function giftGain(def: VillagerDef, itemId: string, day?: number): number {
   const reaction = giftReaction(def, itemId);
   const base = GIFT_GAIN[reaction];
-  if (reaction !== 'dislike' && isFlowerItem(itemId)) return base + FLOWER_GIFT_BONUS;
-  return base;
+  let gain = reaction !== 'dislike' && isFlowerItem(itemId) ? base + FLOWER_GIFT_BONUS : base;
+  // 生日当天翻倍——送礼要挑日子
+  if (day !== undefined && reaction !== 'dislike' && isBirthdayToday(def.id, day)) {
+    gain *= BIRTHDAY_GIFT_MULT;
+  }
+  return gain;
 }
 
 /* ---------------- 创建与游走 ---------------- */
@@ -399,6 +421,34 @@ export function villagerById(state: GameState, id: string): Villager | null {
 export function pickPhrase(def: VillagerDef): DialoguePhrase {
   return def.phrases[Math.floor(Math.random() * def.phrases.length)];
 }
+
+/* ---------------- 生日 ---------------- */
+
+/** 今天是谁的生日（按一年 32 天循环） */
+export function birthdayVillager(day: number): VillagerDef | null {
+  const d = ((day - 1) % 32) + 1;
+  for (const id of VILLAGER_ORDER) {
+    const def = VILLAGER_DEFS[id];
+    if (def && def.birthday === d) return def;
+  }
+  return null;
+}
+
+/** 某个村民今天过不过生日 */
+export function isBirthdayToday(villagerId: string, day: number): boolean {
+  const def = VILLAGER_DEFS[villagerId];
+  if (!def) return false;
+  return def.birthday === ((day - 1) % 32) + 1;
+}
+
+/** 聊天的台词：生日优先用生日那句 */
+export function pickChatPhrase(def: VillagerDef, day: number): DialoguePhrase {
+  if (isBirthdayToday(def.id, day)) return def.birthdayPhrase;
+  return pickPhrase(def);
+}
+
+/** 生日当天送礼的好感倍率 */
+export const BIRTHDAY_GIFT_MULT = 2;
 
 /** 送礼反应台词：只给语气，不给数值 */
 export function pickReaction(def: VillagerDef, reaction: GiftReaction): string {

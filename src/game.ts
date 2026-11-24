@@ -51,7 +51,7 @@ import {
 import {
   VILLAGER_DEFS, VILLAGER_ORDER, createVillager, updateVillagers, villagerNear,
   villagerById, hearts, addFriendship, shopDiscount, giftReaction, giftGain,
-  pickPhrase, pickReaction, settleVillagersOvernight
+  pickChatPhrase, pickReaction, settleVillagersOvernight, isBirthdayToday, birthdayVillager, BIRTHDAY_GIFT_MULT
 } from './villagers';
 import * as Bag from './items';
 import { getDef, pickFish, sellPrice, isSellable } from './items';
@@ -1854,9 +1854,18 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
   if (!def) return;
   const h = hearts(v.friendship);
   const heartsStr = '♥'.repeat(h) + '<span class="dim">' + '♡'.repeat(5 - h) + '</span>';
+  const isBday = isBirthdayToday(v.id, state.day);
+
+  // 生日当天：招呼语换成生日那句，而不是日常问候
+  const greetLine = isBday ? def.birthdayLine : def.greet;
   const speech = reaction
     ? `<p class="v-reaction">“${reaction}”</p>`
-    : `<p class="dim v-greet">“${def.greet}”</p>`;
+    : `<p class="dim v-greet">“${greetLine}”</p>`;
+
+  const bdayTag = isBday
+    ? `<div class="bday-banner">🎂 今天是 ${def.name} 的生日！<span class="bday-sub">送礼好感 ×${BIRTHDAY_GIFT_MULT}</span></div>`
+    : '';
+
   const body = `
     <div class="villager-head">
       <span class="v-icon">${def.icon}</span>
@@ -1865,10 +1874,11 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
         <div class="v-hearts">${heartsStr}</div>
       </div>
     </div>
+    ${bdayTag}
     ${speech}
     <div class="animal-status">
       <div class="as-row"><span class="k">聊天</span><span class="v">${v.talkedToday ? '✓ 今天聊过了' : '✗ 还没聊'}</span></div>
-      <div class="as-row"><span class="k">送礼</span><span class="v">${v.giftedToday ? '✓ 今天送过了' : '✗ 还没送'}</span></div>
+      <div class="as-row"><span class="k">送礼</span><span class="v">${v.giftedToday ? '✓ 今天送过了' : isBday ? '✗ 还没送（今天翻倍）' : '✗ 还没送'}</span></div>
     </div>
     <p class="dim">打出${def.name}说的话就能聊起来。送礼时留意对方的反应，就知道送得对不对。</p>`;
   UI.showModal(
@@ -1876,7 +1886,7 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
     body,
     [
       { label: v.talkedToday ? '已聊过' : '聊天', cls: v.talkedToday ? 'ghost' : 'green', onClick: () => { if (!v.talkedToday) { UI.hideModal(); startChat(v); } } },
-      { label: v.giftedToday ? '已送礼' : '送礼', cls: v.giftedToday ? 'ghost' : '', onClick: () => { if (!v.giftedToday) { UI.hideModal(); openGiftPanel(v); } } },
+      { label: v.giftedToday ? '已送礼' : '送礼', cls: v.giftedToday ? 'ghost' : isBday ? 'green' : '', onClick: () => { if (!v.giftedToday) { UI.hideModal(); openGiftPanel(v); } } },
       { label: '离开', cls: 'ghost', onClick: () => UI.hideModal() }
     ]
   );
@@ -1885,7 +1895,7 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
 function startChat(v: Villager): void {
   if (session.active) return;
   const def = VILLAGER_DEFS[v.id];
-  const phrase = pickPhrase(def);
+  const phrase = pickChatPhrase(def, state.day);
   const cost = { stamina: 1, time: 10 };
   if (state.stamina < cost.stamina) {
     UI.toast('太累了，先歇歇吧', 'bad');
@@ -1947,7 +1957,8 @@ function giveGift(v: Villager, bagIndex: number): void {
   if (!s) return;
   const def = VILLAGER_DEFS[v.id];
   const reaction = giftReaction(def, s.id);
-  addFriendship(v, giftGain(def, s.id));
+  const gain = giftGain(def, s.id, state.day);
+  addFriendship(v, gain);
   Bag.removeFromBag(state.bag, s.id, 1, s.quality);
   v.giftedToday = true;
   state.stats.gifts++;
@@ -3217,6 +3228,12 @@ function startGame(fresh: boolean): void {
   // 读档/开工时若正逢节日，补一条提示（睡前预告过的话这里只是重申）
   const fest = festivalOfDay(state.day);
   if (fest) window.setTimeout(() => UI.toast(`${fest.icon} 今天是${fest.name}：${fest.effect}`, 'good'), 300);
+
+  // 今天有谁过生日，也提一句
+  const bday = birthdayVillager(state.day);
+  if (bday) {
+    window.setTimeout(() => UI.toast(`🎂 今天是 ${bday.name} 的生日，送礼好感翻倍`, 'good'), fest ? 1400 : 300);
+  }
 
   if (fresh) showIntro();
 }

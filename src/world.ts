@@ -4,7 +4,10 @@
 
 import type { Dir, Player, SceneId } from './types';
 
-export const TILE = 48;
+/* 格子边长。原来是 48，缩到 38(≈4/5)：一屏能看到更多地块，人物相对格子更大。
+   注意：改这里等于改整个世界坐标的尺度，凡是与格子相关的偏移都必须用 TILE 计算，
+   不能写死像素值。 */
+export const TILE = 38;
 export const MAP_W = 70;
 export const MAP_H = 22;
 export const VIEW_W = 960;
@@ -130,8 +133,8 @@ export function indoorAnimalPos(scene: 'coop' | 'barn', index: number): { x: num
   const startX = r.x0 + 3;
   const startY = r.y0 + 4;
   return {
-    x: (startX + col * 3) * 48 + 24,
-    y: (startY + row * 3) * 48 + 24
+    x: (startX + col * 3) * TILE + TILE / 2,
+    y: (startY + row * 3) * TILE + TILE / 2
   };
 }
 

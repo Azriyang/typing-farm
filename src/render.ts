@@ -906,40 +906,56 @@ function drawFurniture(c: Ctx, scene: string) {
 }
 
 /**
- * 地图边界与树篱：用**灌木丛**，不是一棵棵独立的树。
- * 交界处的格子会互相咬合成一道有厚度的绿篱，顶部高度按格子哈希起伏，
- * 所以整条边界看上去是连续、自然的，而不是一列重复的圆球。
+ * 地图边界与树篱：一道**茂密到看得出走不过去**的灌木墙。
+ *
+ * 关键是"咬合"：每格画的不止一团，而是
+ *   贴地三层（左 / 中 / 右，各自半径都超过半格）→ 相邻格子必然重叠、不留缝
+ *   中层两团 → 把高度堆起来
+ *   顶层一团（高度按哈希起伏）→ 天际线不是一条直线
+ * 最后在底部压一条暗带，把地面封死，视觉上"钻不过去"。
  */
 function drawThicket(c: Ctx, cx: number, baseY: number, seed: number, scale: number) {
-  // 三道叶簇：贴地一层 → 中间一层 → 顶部一层，越往上越小
-  const layers: Array<{ dy: number; r: number; dx: number }> = [
-    { dy: 7, r: 16, dx: (hash(seed, 3) - 0.5) * 8 },
-    { dy: 15, r: 13.5, dx: (hash(seed, 7) - 0.5) * 10 },
-    { dy: 22 + hash(seed, 11) * 5, r: 10.5, dx: (hash(seed, 13) - 0.5) * 9 }
-  ];
-
-  for (const L of layers) {
+  const R = 23 * scale;
+  const draw = (x: number, yOff: number, r: number, s: number) => {
     canopy(
-      c, cx + L.dx, baseY - L.dy * scale, L.r * scale, seed + L.dy,
+      c, x, baseY - yOff * scale, r * scale, s,
       pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
     );
-  }
+  };
 
-  // 两根探出的细枝，破掉"三个球叠起来"的感觉
-  c.strokeStyle = shift(pal.trunk, -12);
-  c.lineWidth = 1.6;
-  const tw = (hash(seed, 17) - 0.5) * 10;
+  // 贴地层：往左右各铺一格，保证和邻居叠上
+  draw(cx - 16 * scale, 9, R * 0.86, seed + 37);
+  draw(cx, 11, R * 0.94, seed + 71);
+  draw(cx + 16 * scale, 9, R * 0.86, seed + 113);
+
+  // 中层：两团，高度错开
+  draw(cx - 9 * scale, 20 + hash(seed, 5) * 3, R * 0.76, seed + 151);
+  draw(cx + 10 * scale, 18 + hash(seed, 9) * 3, R * 0.72, seed + 193);
+
+  // 顶层：一团，高度按格子抖出天际线
+  draw(cx + (hash(seed, 11) - 0.5) * 12, 31 + hash(seed, 13) * 10, R * 0.56, seed + 229);
+
+  // 底部暗带：把地面封住，看起来"没有缝可以钻"
+  c.fillStyle = 'rgba(26,42,20,.26)';
+  c.fillRect(cx - 26, baseY - 4, 52, 5);
+  c.fillStyle = 'rgba(18,30,14,.18)';
+  c.fillRect(cx - 26, baseY - 1, 52, 3);
+
+  // 几根探出的细枝，破掉"一堵墙"的呆板
+  c.strokeStyle = shift(pal.trunk, -14);
+  c.lineWidth = 1.5;
+  const tw = (hash(seed, 17) - 0.5) * 14;
   c.beginPath();
-  c.moveTo(cx + tw, baseY - 10 * scale);
-  c.lineTo(cx + tw - 8, baseY - 22 * scale);
-  c.moveTo(cx - tw * 0.6, baseY - 14 * scale);
-  c.lineTo(cx - tw * 0.6 + 7, baseY - 26 * scale);
+  c.moveTo(cx + tw, baseY - 12 * scale);
+  c.lineTo(cx + tw - 9, baseY - 26 * scale);
+  c.moveTo(cx - tw * 0.7, baseY - 18 * scale);
+  c.lineTo(cx - tw * 0.7 + 8, baseY - 32 * scale);
   c.stroke();
 
   // 零星浆果：只长在部分格子上，做出疏密
-  if (hash(seed, 23) > 0.62) {
-    const bx = cx + (hash(seed, 29) - 0.5) * 18;
-    const by = baseY - (12 + hash(seed, 31) * 8) * scale;
+  if (hash(seed, 23) > 0.55) {
+    const bx = cx + (hash(seed, 29) - 0.5) * 22;
+    const by = baseY - (13 + hash(seed, 31) * 10) * scale;
     c.fillStyle = '#b8495f';
     c.beginPath(); c.arc(bx, by, 1.7, 0, Math.PI * 2); c.fill();
     c.beginPath(); c.arc(bx + 4, by + 3, 1.4, 0, Math.PI * 2); c.fill();

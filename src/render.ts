@@ -1177,6 +1177,57 @@ function drawHouse(c: Ctx) {
   c.fillStyle = '#9b7350';
   c.fillRect(x0 + 24, winY + 32, 44, 3);
   c.fillRect(x0 + w - 70, winY + 32, 44, 3);
+
+  // ---- 石砌台基（门的位置留出台阶） ----
+  const plinthH = 14;
+  const plinthY = y0 + h - plinthH;
+  c.fillStyle = TOWN_MATERIAL.stone.dark;
+  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), plinthH);
+  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), plinthH);
+  c.fillStyle = TOWN_MATERIAL.stone.base;
+  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), plinthH - 3);
+  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), plinthH - 3);
+  c.fillStyle = TOWN_MATERIAL.stone.hi;
+  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), 1);
+  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), 1);
+  c.fillStyle = 'rgba(50,44,36,.30)';
+  for (let sx = x0 + 16; sx < x0 + w - 8; sx += 24) {
+    if (sx > dx - 8 && sx < dx + dw + 8) continue;   // 门洞处不画石缝
+    c.fillRect(sx, plinthY + 2, 1, plinthH - 6);
+  }
+  // 门前石阶
+  c.fillStyle = '#b3ab9c';
+  c.fillRect(dx - 6, y0 + h - 7, dw + 12, 7);
+  c.fillStyle = '#cfc7b6';
+  c.fillRect(dx - 6, y0 + h - 7, dw + 12, 2);
+  c.fillStyle = 'rgba(40,28,16,.28)';
+  c.fillRect(dx - 6, y0 + h - 1, dw + 12, 3);
+
+  // ---- 门边挂灯 ----
+  c.fillStyle = '#3a2a1c';
+  c.fillRect(dx + dw + 12, dy + 6, 3, 10);
+  c.fillStyle = '#c9563f';
+  c.beginPath(); c.ellipse(dx + dw + 13.5, dy + 20, 6, 7.5, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgba(255,226,150,.75)';
+  c.beginPath(); c.ellipse(dx + dw + 13.5, dy + 19, 3, 4.2, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#8a3a2e';
+  c.fillRect(dx + dw + 8, dy + 12, 11, 2);
+  c.fillRect(dx + dw + 8, dy + 27, 11, 2);
+
+  // ---- 窗下花箱 ----
+  for (const wx of [x0 + 22, x0 + w - 72]) {
+    c.fillStyle = '#7a5334';
+    c.fillRect(wx, winY + 35, 48, 9);
+    c.fillStyle = '#9b7350';
+    c.fillRect(wx, winY + 35, 48, 2);
+    for (let i = 0; i < 5; i++) {
+      const bx = wx + 5 + i * 9;
+      c.fillStyle = i % 2 ? '#4a8a4a' : '#5a9a52';
+      c.beginPath(); c.arc(bx, winY + 33, 3.2, 0, Math.PI * 2); c.fill();
+      c.fillStyle = i % 3 ? '#e86a9a' : '#f2d45c';
+      c.beginPath(); c.arc(bx + 1, winY + 31.5, 1.8, 0, Math.PI * 2); c.fill();
+    }
+  }
 }
 
 /* ---------------- 畜栏与棚舍 ---------------- */
@@ -1204,62 +1255,227 @@ function drawPens(c: Ctx) {
   }
 }
 
+/** 竖向木板墙：底色 + 板缝 + 受光边。鸡舍牛棚共用 */
+function plankWall(
+  c: Ctx, x: number, y: number, w: number, h: number,
+  base: string, dark: string, hi: string, plankW = 9
+) {
+  c.fillStyle = base;
+  c.fillRect(x, y, w, h);
+  // 顶部受光
+  c.fillStyle = hi;
+  c.fillRect(x, y, w, 2);
+  // 竖向板缝
+  c.fillStyle = dark;
+  for (let px = x + plankW; px < x + w; px += plankW) {
+    c.fillRect(Math.round(px), y + 1, 1, h - 1);
+  }
+  // 底部压暗（接地处的潮气）
+  const g = c.createLinearGradient(0, y + h * 0.55, 0, y + h);
+  g.addColorStop(0, 'rgba(40,26,14,0)');
+  g.addColorStop(1, 'rgba(40,26,14,.26)');
+  c.fillStyle = g;
+  c.fillRect(x, y + h * 0.55, w, h * 0.45);
+}
+
+/** 石砌台基 */
+function stonePlinth(c: Ctx, x: number, y: number, w: number, h: number) {
+  c.fillStyle = TOWN_MATERIAL.stone.dark;
+  c.fillRect(x, y, w, h);
+  c.fillStyle = TOWN_MATERIAL.stone.base;
+  c.fillRect(x, y, w, h - 3);
+  c.fillStyle = TOWN_MATERIAL.stone.hi;
+  c.fillRect(x, y, w, 1);
+  c.fillStyle = 'rgba(50,44,36,.30)';
+  for (let sx = x + 12; sx < x + w - 4; sx += 18) c.fillRect(sx, y + 2, 1, h - 6);
+  c.fillStyle = 'rgba(40,28,16,.26)';
+  c.fillRect(x, y + h - 2, w, 2);
+}
+
 function drawCoop(c: Ctx) {
   const b = BUILDINGS.coop;
   const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
-  c.fillStyle = 'rgba(60,40,20,.18)';
-  c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.5, 10, 0, 0, Math.PI * 2); c.fill();
-  // 墙
-  c.fillStyle = '#e8d3a8';
-  c.fillRect(x + 4, y + 20, w - 8, h - 20);
-  c.fillStyle = '#c9ab77';
-  c.fillRect(x + 4, y + 20, w - 8, 4);
-  // 屋顶
-  c.fillStyle = '#c9743f';
+
+  c.fillStyle = 'rgba(60,40,20,.20)';
+  c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.52, 9, 0, 0, Math.PI * 2); c.fill();
+
+  const wallTop = y + 40;
+  const plinthH = 9;
+  const wallBot = y + h - plinthH + 2;
+
+  // 墙：浅木色竖板
+  plankWall(c, x + 5, wallTop, w - 10, wallBot - wallTop, '#e8d3a8', '#c9ab77', '#f6e6c4');
+
+  // 瓦顶（小屋：坡度陡、出檐宽）
+  drawTileRoof(c, x - 8, x + w + 8, y - 10, wallTop, false, '#b06a45', '#7d4526');
+  c.fillStyle = 'rgba(40,30,20,.28)';
+  c.fillRect(x - 8, wallTop, w + 16, 6);
+
+  // 山墙上的通风小窗
+  c.fillStyle = '#5a3c22';
+  c.fillRect(x + w / 2 - 7, y + 4, 14, 12);
+  c.fillStyle = '#cdbfa4';
+  c.fillRect(x + w / 2 - 5, y + 6, 10, 8);
+  c.fillStyle = '#5a3c22';
+  c.fillRect(x + w / 2 - 1, y + 6, 2, 8);
+  c.fillRect(x + w / 2 - 5, y + 9, 10, 1.5);
+
+  // 屋顶风向鸡
+  const vx = x + w - 22, vy = y - 12;
+  c.strokeStyle = '#4a4038'; c.lineWidth = 1.6;
+  c.beginPath(); c.moveTo(vx, vy); c.lineTo(vx, vy + 14); c.stroke();
+  c.fillStyle = '#4a4038';
   c.beginPath();
-  c.moveTo(x - 6, y + 24); c.lineTo(x + w / 2, y - 8); c.lineTo(x + w + 6, y + 24);
+  c.moveTo(vx - 7, vy + 2); c.lineTo(vx + 5, vy - 1);
+  c.lineTo(vx + 5, vy + 5); c.lineTo(vx - 7, vy + 6);
   c.closePath(); c.fill();
-  c.fillStyle = '#a85c30';
-  c.fillRect(x - 6, y + 21, w + 12, 4);
-  // 门
+  c.beginPath(); c.arc(vx + 7, vy + 2, 2.4, 0, Math.PI * 2); c.fill();
+
+  // 门：内凹 + 门框 + 上部门窗
+  const dw = 30, dh = 34;
+  const dx = x + w / 2 - dw / 2;
+  const dy = y + h - plinthH - dh + 2;
+  c.fillStyle = 'rgba(30,22,14,.55)';
+  c.fillRect(dx - 3, dy - 3, dw + 6, dh + 5);
   c.fillStyle = '#6f4a2b';
-  c.fillRect(x + w / 2 - 12, y + h - 30, 24, 30);
+  c.fillRect(dx, dy, dw, dh);
   c.fillStyle = '#8a5f38';
-  c.fillRect(x + w / 2 - 9, y + h - 27, 18, 27);
-  // 标识
-  c.font = '14px serif';
-  c.fillText('🐔', x + 8, y + h - 8);
+  c.fillRect(dx + 3, dy + 3, dw - 6, dh - 3);
+  c.fillStyle = 'rgba(50,32,16,.28)';
+  for (let i = 1; i < 3; i++) c.fillRect(dx + (dw * i) / 3, dy + 3, 1, dh - 3);
+  // 门上的小窗
+  c.fillStyle = '#7fb8d4';
+  c.fillRect(dx + 5, dy + 5, dw - 10, 8);
+  c.fillStyle = 'rgba(255,255,255,.35)';
+  c.fillRect(dx + 6, dy + 5, (dw - 12) * 0.45, 8);
+  c.fillStyle = '#5a3c22';
+  c.fillRect(dx + dw / 2 - 1, dy + 5, 2, 8);
+  c.fillStyle = '#c9a44e';
+  c.fillRect(dx + dw - 9, dy + dh * 0.55, 4, 4);
+
+  // 门前斜板（鸡自己能走上去）
+  c.fillStyle = '#a98a5e';
+  c.beginPath();
+  c.moveTo(dx - 5, y + h - 1);
+  c.lineTo(dx + dw + 5, y + h - 1);
+  c.lineTo(dx + dw + 1, y + h - 6);
+  c.lineTo(dx - 1, y + h - 6);
+  c.closePath();
+  c.fill();
+
+  // 侧墙鸡窝（突出的小木箱 + 出蛋口）
+  const nw = 16, nh = 13;
+  const nx = x + w - nw - 8;
+  const ny = y + h - plinthH - nh - 6;
+  c.fillStyle = '#8a5f38';
+  c.fillRect(nx, ny, nw, nh);
+  c.fillStyle = '#a97c4f';
+  c.fillRect(nx + 1, ny + 1, nw - 2, nh - 4);
+  c.fillStyle = '#2a2018';
+  c.fillRect(nx + 3, ny + nh - 8, nw - 6, 5);
+  c.fillStyle = '#c9a44e';
+  c.beginPath(); c.arc(nx + nw / 2, ny + nh - 9, 2.2, 0, Math.PI * 2); c.fill();
+
+  // 台基
+  stonePlinth(c, x + 5, y + h - plinthH + 2, w - 10, plinthH);
+
+  c.font = '13px serif';
+  c.fillText('🐔', x + 9, wallTop + 14);
 }
 
 function drawBarn(c: Ctx) {
   const b = BUILDINGS.barn;
   const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
-  c.fillStyle = 'rgba(60,40,20,.18)';
-  c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.5, 12, 0, 0, Math.PI * 2); c.fill();
-  // 墙（红）
-  c.fillStyle = '#c0574a';
-  c.fillRect(x + 4, y + 24, w - 8, h - 24);
-  c.fillStyle = '#a34539';
-  for (let i = 0; i < 3; i++) c.fillRect(x + 4, y + 34 + i * 18, w - 8, 3);
-  // 白色门框
+
+  c.fillStyle = 'rgba(60,40,20,.20)';
+  c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.52, 11, 0, 0, Math.PI * 2); c.fill();
+
+  const wallTop = y + 44;
+  const plinthH = 10;
+  const wallBot = y + h - plinthH + 2;
+
+  // 墙：暗红竖板
+  plankWall(c, x + 5, wallTop, w - 10, wallBot - wallTop, '#b9544a', '#8e3b33', '#d0695c', 11);
+
+  // 白色腰线 + 角柱
   c.fillStyle = '#f2ead8';
-  c.fillRect(x + w / 2 - 22, y + h - 40, 44, 40);
+  c.fillRect(x + 5, wallTop, w - 10, 3);
+  c.fillRect(x + 5, wallTop, 4, wallBot - wallTop);
+  c.fillRect(x + w - 9, wallTop, 4, wallBot - wallTop);
+
+  // 瓦顶
+  drawTileRoof(c, x - 9, x + w + 9, y - 12, wallTop, false, '#8a4a3a', '#5e2f24');
+  c.fillStyle = 'rgba(40,30,20,.30)';
+  c.fillRect(x - 9, wallTop, w + 18, 7);
+
+  // 山墙干草吊门
+  const hw = 26, hh = 22;
+  const hx = x + w / 2 - hw / 2;
+  const hy = y + 8;
+  c.fillStyle = '#f2ead8';
+  c.fillRect(hx - 2, hy - 2, hw + 4, hh + 4);
+  c.fillStyle = '#5a3c22';
+  c.fillRect(hx, hy, hw, hh);
+  c.strokeStyle = '#f2ead8'; c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(hx, hy); c.lineTo(hx + hw, hy + hh);
+  c.moveTo(hx + hw, hy); c.lineTo(hx, hy + hh);
+  c.stroke();
+
+  // 大门：白框 + 双开 + 交叉加固
+  const dw = 62, dh = 46;
+  const dx = x + w / 2 - dw / 2;
+  const dy = y + h - plinthH - dh + 2;
+  c.fillStyle = '#f2ead8';
+  c.fillRect(dx - 4, dy - 4, dw + 8, dh + 6);
   c.fillStyle = '#8a4a3a';
-  c.fillRect(x + w / 2 - 18, y + h - 36, 36, 36);
+  c.fillRect(dx, dy, dw, dh);
+  c.fillStyle = '#5e2f24';
+  c.fillRect(dx + dw / 2 - 1.5, dy, 3, dh);
+  c.fillStyle = 'rgba(50,24,16,.22)';
+  for (const q of [0.22, 0.78]) c.fillRect(dx + dw * q, dy, 1, dh);
   c.strokeStyle = '#f2ead8'; c.lineWidth = 3;
   c.beginPath();
-  c.moveTo(x + w / 2 - 18, y + h - 36); c.lineTo(x + w / 2 + 18, y + h);
-  c.moveTo(x + w / 2 + 18, y + h - 36); c.lineTo(x + w / 2 - 18, y + h);
+  c.moveTo(dx + 3, dy + dh - 3); c.lineTo(dx + dw / 2 - 3, dy + 3);
+  c.moveTo(dx + dw / 2 + 3, dy + 3); c.lineTo(dx + dw - 3, dy + dh - 3);
   c.stroke();
-  // 屋顶
-  c.fillStyle = '#8a4a3a';
-  c.beginPath();
-  c.moveTo(x - 8, y + 28); c.lineTo(x + w * 0.25, y - 6); c.lineTo(x + w * 0.75, y - 6); c.lineTo(x + w + 8, y + 28);
-  c.closePath(); c.fill();
-  c.fillStyle = '#6f3a2e';
-  c.fillRect(x - 8, y + 25, w + 16, 4);
-  c.font = '15px serif';
-  c.fillText('🐄', x + 10, y + h - 8);
+  // 推拉门轨
+  c.fillStyle = '#3a2a1c';
+  c.fillRect(dx - 6, dy - 7, dw + 12, 3);
+
+  // 两侧小窗
+  for (const wx of [x + 20, x + w - 40]) {
+    c.fillStyle = '#f2ead8';
+    c.fillRect(wx - 2, wallTop + 12, 24, 18);
+    c.fillStyle = '#7fb8d4';
+    c.fillRect(wx, wallTop + 14, 20, 14);
+    c.fillStyle = 'rgba(255,255,255,.35)';
+    c.beginPath();
+    c.moveTo(wx + 2, wallTop + 28); c.lineTo(wx + 10, wallTop + 14);
+    c.lineTo(wx + 14, wallTop + 14); c.lineTo(wx + 6, wallTop + 28);
+    c.closePath(); c.fill();
+    c.fillStyle = '#f2ead8';
+    c.fillRect(wx + 9, wallTop + 14, 2, 14);
+    c.fillRect(wx, wallTop + 20, 20, 2);
+  }
+
+  // 门口草垛
+  const bales: Array<[number, number, number]> = [[x + 8, y + h - 22, 20], [x + 8, y + h - 34, 16]];
+  for (const [bx, by, bw] of bales) {
+    c.fillStyle = '#c9a44e';
+    c.fillRect(bx, by, bw, 12);
+    c.fillStyle = '#dcc06a';
+    c.fillRect(bx, by, bw, 3);
+    c.fillStyle = 'rgba(120,90,30,.35)';
+    c.fillRect(bx + 2, by + 6, bw - 4, 1);
+    c.fillRect(bx + bw / 2 - 1, by, 2, 12);
+  }
+
+  // 台基
+  stonePlinth(c, x + 5, y + h - plinthH + 2, w - 10, plinthH);
+
+  c.font = '13px serif';
+  c.fillText('🐄', x + 10, wallTop + 15);
 }
 
 /* ---------------- 小镇建筑 ---------------- */

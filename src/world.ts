@@ -480,7 +480,11 @@ function buildFarmTerrain(): void {
     set(x, 0, T.HEDGE);
     set(x, 1, T.HEDGE);
     set(x, MAP_H - 1, T.HEDGE);
-    set(x, MAP_H - 2, T.HEDGE);
+    // 倒数第二行：畜栏那一段留出地面。
+    // 畜舍门在 y=19，玩家要站在 y=20 才能面对门；这一行如果也种满灌木，
+    // 鸡舍和牛棚就永远进不去了（曾经就是这样被挡死的）。畜栏也用到这一行。
+    const penStrip = x >= PENS.chicken.x0 && x <= PENS.cow.x1;
+    if (!penStrip) set(x, MAP_H - 2, T.HEDGE);
   }
   for (let y = 0; y < MAP_H; y++) {
     set(0, y, T.HEDGE);

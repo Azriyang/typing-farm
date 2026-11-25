@@ -28,27 +28,31 @@ export interface Spot {
 /** 全天可去的地点表 */
 export const SPOTS = {
   /** 小镇西口的自家菜地，阿茂在这儿忙 */
-  farmEdge: { tx: 35, ty: 11, radius: 2 },
+  farmEdge: { tx: 45, ty: 14, radius: 1.3 },   // 镇民的小菜园
   /** 小镇河边，小渔钓鱼 */
   pondBank: { tx: 48, ty: 18, radius: 1.6 },
   /** 小镇广场 */
-  plaza: { tx: 52, ty: 11, radius: 3 },
+  plaza: { tx: 50, ty: 12, radius: 3 },
+  /** 小镇水井边（打水/闲聊） */
+  well: { tx: 39, ty: 12, radius: 1.4 },
+  /** 镇民的小菜园 */
+  garden: { tx: 45, ty: 14, radius: 1.3 },
   /** 酒馆门口 */
-  tavernFront: { tx: 40, ty: 6, radius: 1.4 },
+  tavernFront: { tx: 40, ty: 7, radius: 1.4 },
   /** 铁匠铺门口 */
-  smithFront: { tx: 45, ty: 6, radius: 1.4 },
+  smithFront: { tx: 45, ty: 7, radius: 1.4 },
   /** 诊所门口 */
-  clinicFront: { tx: 49, ty: 6, radius: 1.4 },
+  clinicFront: { tx: 57, ty: 7, radius: 1.4 },
   /** 学堂门口 */
-  schoolFront: { tx: 54, ty: 6, radius: 1.4 },
+  schoolFront: { tx: 51, ty: 7, radius: 1.4 },
   /** 钟楼下 */
-  towerFoot: { tx: 59, ty: 6, radius: 1.2 },
+  towerFoot: { tx: 61, ty: 8, radius: 1.2 },
   /** 杂货店门口 */
-  shopFront: { tx: 36, ty: 6, radius: 1.4 },
+  shopFront: { tx: 35, ty: 7, radius: 1.4 },
   /** 镇口，进出小镇的路 */
-  townGate: { tx: 34, ty: 9, radius: 1.6 },
+  townGate: { tx: 34, ty: 8, radius: 1.6 },
   /** 屋檐下（雨天避雨） */
-  underRoof: { tx: 36, ty: 6, radius: 1.0 }
+  underRoof: { tx: 41, ty: 7, radius: 1.0 },
 } as const;
 
 /** 按季节变化的「花最多的地方」——阿晴会追着花走 */

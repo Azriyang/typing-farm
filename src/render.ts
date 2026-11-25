@@ -7,7 +7,7 @@ import {
   TILE, MAP_W, MAP_H, VIEW_W, VIEW_H, T, tileAt, OBJECTS,
   plotTileOf, facingTile, BUILDINGS, PENS, TOWN_BUILDINGS,
   areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos,
-  FARM_DOORS, TOWN_FOUNTAIN
+  FARM_DOORS, TOWN_FOUNTAIN, TOWN_WELL
 } from './world';
 import type { TownBuildingKind, IndoorScene } from './world';
 import type { Weather } from './types';
@@ -1285,14 +1285,37 @@ function drawTownBuildings(c: Ctx, nowMs = 0) {
       c.fillRect(doorX - 22, canopyY, 44, 2);
     }
 
-    // 门
-    const doorY = north ? y + h - 34 : y + 22;
-    c.fillStyle = '#6f4a2b';
-    c.fillRect(x + w / 2 - 13, doorY, 26, 34);
-    c.fillStyle = '#8a5f38';
-    c.fillRect(x + w / 2 - 10, doorY + 3, 20, 31);
-    c.fillStyle = '#e8c86a';
-    c.fillRect(x + w / 2 + 5, doorY + 16, 3, 3);
+    // 门：北侧商铺朝南；南区民宅按 doorStyle 朝东/北/西
+    const dStyle: 'n' | 's' | 'e' | 'w' = b.doorStyle ?? (north ? 's' : 'n');
+    if (dStyle === 'e' || dStyle === 'w') {
+      // 侧向门：画成竖着的门洞 + 门前台阶
+      const dx = dStyle === 'e' ? x + w - 15 : x + 3;
+      const dy = y + h / 2 - 17;
+      c.fillStyle = '#6f4a2b';
+      c.fillRect(dx, dy, 12, 34);
+      c.fillStyle = '#8a5f38';
+      c.fillRect(dx + 2, dy + 3, 8, 31);
+      c.fillStyle = '#e8c86a';
+      c.fillRect(dx + (dStyle === 'e' ? 3 : 6), dy + 16, 3, 3);
+      // 台阶
+      c.fillStyle = '#a89880';
+      c.fillRect(dStyle === 'e' ? x + w : x - 6, dy + 4, 6, 26);
+      c.fillStyle = 'rgba(255,240,210,.20)';
+      c.fillRect(dStyle === 'e' ? x + w : x - 6, dy + 4, 6, 1);
+    } else {
+      const doorY = dStyle === 's' ? y + h - 34 : y + 22;
+      c.fillStyle = '#6f4a2b';
+      c.fillRect(x + w / 2 - 13, doorY, 26, 34);
+      c.fillStyle = '#8a5f38';
+      c.fillRect(x + w / 2 - 10, doorY + 3, 20, 31);
+      c.fillStyle = '#e8c86a';
+      c.fillRect(x + w / 2 + 5, doorY + 16, 3, 3);
+      // 门前石阶
+      c.fillStyle = '#a89880';
+      c.fillRect(x + w / 2 - 16, dStyle === 's' ? y + h - 6 : y + 18, 32, 6);
+      c.fillStyle = 'rgba(255,240,210,.20)';
+      c.fillRect(x + w / 2 - 16, dStyle === 's' ? y + h - 6 : y + 18, 32, 1);
+    }
 
     // 窗
     c.fillStyle = '#7fb8d4';
@@ -1342,7 +1365,56 @@ function drawTownBuildings(c: Ctx, nowMs = 0) {
   }
 
   drawFountain(c, nowMs);
+  drawWell(c);
 }
+
+/** 小镇水井：石台 + 井口 + 辘轳架 */
+function drawWell(c: Ctx) {
+  const wl = TOWN_WELL;
+  const x = wl.x * TILE, y = wl.y * TILE;
+  const cx = x + wl.w * TILE / 2;
+  const cy = y + wl.h * TILE / 2;
+
+  // 影子
+  c.fillStyle = 'rgba(60,40,20,.22)';
+  c.beginPath(); c.ellipse(cx, y + wl.h * TILE - 4, 40, 10, 0, 0, Math.PI * 2); c.fill();
+
+  // 石台
+  c.fillStyle = '#8a8478';
+  c.beginPath(); c.ellipse(cx, cy + 8, 38, 20, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#a8a294';
+  c.beginPath(); c.ellipse(cx, cy + 5, 34, 17, 0, 0, Math.PI * 2); c.fill();
+
+  // 井口（深色）
+  c.fillStyle = '#2a2420';
+  c.beginPath(); c.ellipse(cx, cy + 4, 22, 11, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#14100e';
+  c.beginPath(); c.ellipse(cx, cy + 4, 16, 8, 0, 0, Math.PI * 2); c.fill();
+
+  // 井沿石砖
+  c.strokeStyle = '#7a7468'; c.lineWidth = 3;
+  c.beginPath(); c.ellipse(cx, cy + 5, 30, 15, 0, 0, Math.PI * 2); c.stroke();
+
+  // 木架（两根柱子 + 横梁 + 绳子 + 桶）
+  c.fillStyle = '#6b4a2e';
+  c.fillRect(cx - 30, y - 22, 5, 34);
+  c.fillRect(cx + 25, y - 22, 5, 34);
+  c.fillStyle = '#8a5f38';
+  c.fillRect(cx - 32, y - 26, 64, 6);
+  c.fillStyle = '#a97c4f';
+  c.fillRect(cx - 32, y - 26, 64, 2);
+  // 绳子
+  c.strokeStyle = '#c9b896'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(cx, y - 20); c.lineTo(cx, cy - 6); c.stroke();
+  // 小桶
+  c.fillStyle = '#7a5434';
+  c.fillRect(cx - 7, cy - 8, 14, 12);
+  c.fillStyle = '#9a7248';
+  c.fillRect(cx - 7, cy - 8, 14, 2);
+  c.fillStyle = '#5a3c22';
+  c.fillRect(cx - 7, cy - 3, 14, 1);
+}
+
 
 /** 钟楼：细高的塔身 + 表盘 */
 function drawTower(c: Ctx, x: number, y: number, w: number, h: number) {

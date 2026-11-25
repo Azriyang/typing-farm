@@ -208,8 +208,13 @@ export interface NodeDef {
   tool: ToolId;
 }
 
-const NODE_RAW: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> = {
-  tree: { kind: 'tree', name: '树', hp: 3, drop: 'mat.wood', dropMin: 2, dropMax: 4, regrow: 3, tool: 'axe' },
+const NODE_RAW: Record<NodeKind, NodeDef> = {
+  /* 木材四档：越大的树越费体力，但每点体力换到的木材更多 */
+  shrub:     { kind: 'shrub',     name: '灌木', hp: 1, drop: 'mat.wood', dropMin: 1, dropMax: 1, regrow: 2, tool: 'axe' },
+  sapling:   { kind: 'sapling',   name: '小树', hp: 2, drop: 'mat.wood', dropMin: 2, dropMax: 3, regrow: 4, tool: 'axe' },
+  tree:      { kind: 'tree',      name: '大树', hp: 4, drop: 'mat.wood', dropMin: 5, dropMax: 8, regrow: 7, tool: 'axe' },
+  /* 老树桩：挖掉就没了，不会长回来 */
+  stump:     { kind: 'stump',     name: '老树桩', hp: 2, drop: 'mat.wood', dropMin: 2, dropMax: 3, regrow: 0, tool: 'axe' },
   rock: { kind: 'rock', name: '岩石', hp: 2, drop: 'mat.stone', dropMin: 2, dropMax: 3, regrow: 5, tool: 'pick' },
   weed: { kind: 'weed', name: '杂草', hp: 1, drop: 'mat.fiber', dropMin: 1, dropMax: 2, regrow: 0, tool: 'sickle' },
   /* 矿洞：不重生，重新进洞才刷新 */
@@ -218,7 +223,7 @@ const NODE_RAW: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'ore
   oreGem: { kind: 'oreGem', name: '宝石矿脉', hp: 4, drop: 'mat.gem', dropMin: 1, dropMax: 2, regrow: 0, tool: 'pick' }
 };
 /** 资源节点：名称本地化 */
-export const NODE_DEFS: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> =
+export const NODE_DEFS: Record<NodeKind, NodeDef> =
   new Proxy(NODE_RAW, {
     get(target, prop) {
       const def = (target as Record<string, NodeDef>)[prop as string];

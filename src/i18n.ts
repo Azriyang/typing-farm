@@ -148,7 +148,10 @@ const ACTION_EN: Record<string, string> = {
 
 /** 资源节点名 */
 const NODE_EN: Record<string, string> = {
-  tree: 'Tree',
+  tree: 'Big Tree',
+  sapling: 'Sapling',
+  shrub: 'Shrub',
+  stump: 'Old Stump',
   rock: 'Rock',
   weed: 'Weeds',
   oreCopper: 'Copper Vein',

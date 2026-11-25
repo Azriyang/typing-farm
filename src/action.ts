@@ -7,6 +7,7 @@ import { CROPS } from './config';
 import { targetAt, T, tileAt, plotAreaOf, areaUnlocked, isIndoor } from './world';
 import { TOOLS } from './tools';
 import type { GameState, ResNode, ToolId } from './types';
+import { isWoodKind } from './types';
 
 export type ActionKind =
   | 'till' | 'plant' | 'water' | 'harvest'
@@ -67,7 +68,7 @@ export function resolveTarget(state: GameState, tx: number, ty: number): ActionI
   // 1) 资源节点优先（杂草可能长在地块上）
   const node = nodeAt(state, tx, ty);
   if (node) {
-    if (node.kind === 'tree') return base('chop', '砍树', 'axe', { nodeKey: node.key });
+    if (isWoodKind(node.kind)) return base('chop', '砍树', 'axe', { nodeKey: node.key });
     if (node.kind === 'rock') return base('mine', '挖石', 'pick', { nodeKey: node.key });
     if (node.kind === 'oreCopper' || node.kind === 'oreIron' || node.kind === 'oreGem') {
       return base('mine', '挖矿', 'pick', { nodeKey: node.key });

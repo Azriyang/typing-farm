@@ -106,7 +106,14 @@ export interface ToolState {
 
 /* ---------------- 资源节点 ---------------- */
 
-export type NodeKind = 'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem';
+export type NodeKind = 'tree' | 'sapling' | 'shrub' | 'stump' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem';
+
+/** 四种木材来源（斧头砍）：灌木 / 小树 / 大树 / 树桩 */
+export const WOOD_KINDS: NodeKind[] = ['shrub', 'sapling', 'tree', 'stump'];
+
+export function isWoodKind(kind: NodeKind): boolean {
+  return kind === 'shrub' || kind === 'sapling' || kind === 'tree' || kind === 'stump';
+}
 
 export interface ResNode {
   key: string;

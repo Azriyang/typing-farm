@@ -10,6 +10,7 @@ import {
   FARM_DOORS, TOWN_FOUNTAIN, TOWN_WELL
 } from './world';
 import type { TownBuildingKind, IndoorScene, TownBuilding } from './world';
+import { isWoodKind } from './types';
 import type { Weather } from './types';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
@@ -265,7 +266,7 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
     case T.TREE: {
       c.fillStyle = pal.grass;
       c.fillRect(x, y, TILE, TILE);
-      drawTree(c, x + TILE / 2, y + TILE - 6, 1 + r * 0.12);
+      drawThicket(c, x + TILE / 2, y + TILE - 6, tx * 31 + ty * 7, 0.92 + r * 0.16);
       break;
     }
     /* ---------------- 室内 ---------------- */
@@ -904,48 +905,47 @@ function drawFurniture(c: Ctx, scene: string) {
   }
 }
 
-function drawTree(c: Ctx, cx: number, baseY: number, scale: number) {
-  const h = 34 * scale;
-  const trunkTop = baseY - 16;
+/**
+ * 地图边界与树篱：用**灌木丛**，不是一棵棵独立的树。
+ * 交界处的格子会互相咬合成一道有厚度的绿篱，顶部高度按格子哈希起伏，
+ * 所以整条边界看上去是连续、自然的，而不是一列重复的圆球。
+ */
+function drawThicket(c: Ctx, cx: number, baseY: number, seed: number, scale: number) {
+  // 三道叶簇：贴地一层 → 中间一层 → 顶部一层，越往上越小
+  const layers: Array<{ dy: number; r: number; dx: number }> = [
+    { dy: 7, r: 16, dx: (hash(seed, 3) - 0.5) * 8 },
+    { dy: 15, r: 13.5, dx: (hash(seed, 7) - 0.5) * 10 },
+    { dy: 22 + hash(seed, 11) * 5, r: 10.5, dx: (hash(seed, 13) - 0.5) * 9 }
+  ];
 
-  // 树干（描边 + 木色 + 左侧高光）
-  c.fillStyle = pal.trunkLine;
-  c.fillRect(cx - 4, trunkTop, 8, 16);
-  c.fillStyle = pal.trunk;
-  c.fillRect(cx - 3, trunkTop, 6, 16);
-  c.fillStyle = shift(pal.trunk, 22);
-  c.fillRect(cx - 2, trunkTop + 1, 2, 13);
+  for (const L of layers) {
+    canopy(
+      c, cx + L.dx, baseY - L.dy * scale, L.r * scale, seed + L.dy,
+      pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+    );
+  }
 
-  // 树冠：先描边层，再本体，最后高光层
-  const R = 20 * scale, Ry = 16 * scale;
-  const ccy = baseY - 16 - h * 0.35;
-  c.fillStyle = pal.foliageLine;
+  // 两根探出的细枝，破掉"三个球叠起来"的感觉
+  c.strokeStyle = shift(pal.trunk, -12);
+  c.lineWidth = 1.6;
+  const tw = (hash(seed, 17) - 0.5) * 10;
   c.beginPath();
-  c.ellipse(cx, ccy, R + 2, Ry + 2, 0, 0, Math.PI * 2);
-  c.fill();
+  c.moveTo(cx + tw, baseY - 10 * scale);
+  c.lineTo(cx + tw - 8, baseY - 22 * scale);
+  c.moveTo(cx - tw * 0.6, baseY - 14 * scale);
+  c.lineTo(cx - tw * 0.6 + 7, baseY - 26 * scale);
+  c.stroke();
 
-  c.fillStyle = pal.foliage[0];
-  c.beginPath();
-  c.ellipse(cx, ccy, R, Ry, 0, 0, Math.PI * 2);
-  c.fill();
-
-  // 中层（偏左上，受光）
-  c.fillStyle = pal.foliage[1];
-  c.beginPath();
-  c.ellipse(cx - 6 * scale, ccy - 6 * scale, 15 * scale, 12 * scale, 0, 0, Math.PI * 2);
-  c.fill();
-
-  // 亮层（偏右下，反光）
-  c.fillStyle = pal.foliage[2];
-  c.beginPath();
-  c.ellipse(cx + 7 * scale, ccy + 2 * scale, 13 * scale, 11 * scale, 0, 0, Math.PI * 2);
-  c.fill();
-
-  // 左上高光斑
-  c.fillStyle = shift(pal.foliage[2], 16);
-  c.beginPath();
-  c.ellipse(cx - 8 * scale, ccy - 8 * scale, 7 * scale, 5 * scale, -0.5, 0, Math.PI * 2);
-  c.fill();
+  // 零星浆果：只长在部分格子上，做出疏密
+  if (hash(seed, 23) > 0.62) {
+    const bx = cx + (hash(seed, 29) - 0.5) * 18;
+    const by = baseY - (12 + hash(seed, 31) * 8) * scale;
+    c.fillStyle = '#b8495f';
+    c.beginPath(); c.arc(bx, by, 1.7, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(bx + 4, by + 3, 1.4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,220,220,.55)';
+    c.fillRect(bx - 0.5, by - 1.5, 1, 1);
+  }
 }
 
 function drawHouse(c: Ctx) {
@@ -2789,6 +2789,370 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
 
 /* ---------------- 资源节点 ---------------- */
 
+/* ============================================================
+   四种木材节点的绘制：灌木 / 小树 / 大树 / 老树桩
+   ------------------------------------------------------------
+   写实一点的做法，关键是两条：
+
+   1. 叶子不用椭圆。用 9 边多边形 + 半径抖动，边缘是碎的；
+      再叠十几团并集，轮廓就不会是"一个球"。
+   2. 明暗靠**整团掩膜上移**：先用最深色画一遍，再上移 2px 用中间色画，
+      再上移 4px 缩小用亮色画。这样受光面自然落在左上方，
+      比逐团加高光干净得多。
+   ============================================================ */
+
+/** 多边形填充 */
+function poly(c: Ctx, pts: Array<[number, number]>) {
+  c.beginPath();
+  c.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+  c.closePath();
+  c.fill();
+}
+
+/** 一片碎边叶团：9 个顶点的多边形，半径带抖动 */
+function woodBlob(c: Ctx, x: number, y: number, r: number, seed: number, squash = 0.84) {
+  const N = 9;
+  c.beginPath();
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const j = 0.74 + hash(seed + i * 7, i * 13) * 0.52;   // 0.74 ~ 1.26
+    const px = x + Math.cos(a) * r * j;
+    const py = y + Math.sin(a) * r * j * squash;
+    if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+  }
+  c.closePath();
+  c.fill();
+}
+
+/**
+ * 树冠：十几团叶的并集，分三遍推移明暗。
+ * R 是树冠半径，seed 用格子坐标保证每棵树形态稳定。
+ */
+function canopy(
+  c: Ctx, cx: number, cy: number, R: number, seed: number,
+  outline: string, dark: string, mid: string, light: string
+) {
+  const N = 12;
+  const pass = (dx: number, dy: number, scale: number, color: string) => {
+    c.fillStyle = color;
+    // 中间一大团打底
+    woodBlob(c, cx + dx, cy + dy, R * 0.6 * scale, seed + 911);
+    // 外圈小团，位置抖开，形成碎边
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + hash(seed, i) * 0.6;
+      const dist = R * 0.5 * (0.62 + hash(seed + i * 3, i * 5) * 0.62);
+      const px = cx + Math.cos(a) * dist * scale + dx;
+      const py = cy + Math.sin(a) * dist * 0.72 * scale + dy;
+      const rr = R * (0.34 + hash(seed + i * 11, i * 7) * 0.3) * scale;
+      woodBlob(c, px, py, rr, seed + i * 17);
+    }
+  };
+
+  pass(0, 0, 1.02, outline);   // 轮廓（最深）
+  pass(0, -1, 0.98, dark);     // 暗部
+  pass(-1, -3, 0.86, mid);     // 中调，整体上移
+  pass(-2, -6, 0.58, light);   // 顶部受光
+
+  // 树冠底部压一道暗边，让"伞盖"有厚度
+  c.fillStyle = outline;
+  woodBlob(c, cx, cy + R * 0.52, R * 0.5, seed + 33, 0.34);
+}
+
+/** 树干：梯形（上窄下宽）+ 左右明暗 + 树皮纹 + 根部外扩 */
+function trunk(
+  c: Ctx, cx: number, top: number, base: number,
+  wTop: number, wBase: number, flare = true
+) {
+  // 描边
+  c.fillStyle = pal.trunkLine;
+  poly(c, [
+    [cx - wTop - 1, top], [cx + wTop + 1, top],
+    [cx + wBase + 1, base], [cx - wBase - 1, base]
+  ]);
+  // 本体
+  c.fillStyle = pal.trunk;
+  poly(c, [
+    [cx - wTop, top], [cx + wTop, top],
+    [cx + wBase, base], [cx - wBase, base]
+  ]);
+  // 左侧受光
+  c.fillStyle = shift(pal.trunk, 26);
+  poly(c, [
+    [cx - wTop, top], [cx - wTop * 0.1, top],
+    [cx - wBase * 0.3, base], [cx - wBase, base]
+  ]);
+  // 右侧背光
+  c.fillStyle = shift(pal.trunk, -28);
+  poly(c, [
+    [cx + wTop * 0.5, top], [cx + wTop, top],
+    [cx + wBase, base], [cx + wBase * 0.55, base]
+  ]);
+  // 树皮横纹
+  c.fillStyle = 'rgba(52,34,18,.28)';
+  const rows = Math.max(2, Math.floor((base - top) / 8));
+  for (let i = 1; i <= rows; i++) {
+    const y = top + ((base - top) * i) / (rows + 1);
+    const wy = wTop + ((wBase - wTop) * (y - top)) / Math.max(1, base - top);
+    c.fillRect(cx - wy * 0.7, Math.round(y), Math.max(2, wy * 1.1), 1);
+  }
+  // 根部外扩
+  if (flare) {
+    c.fillStyle = pal.trunk;
+    poly(c, [
+      [cx - wBase + 1, base - 7], [cx - wBase - 5, base],
+      [cx - wBase - 1, base], [cx - wBase + 3, base - 6]
+    ]);
+    poly(c, [
+      [cx + wBase - 1, base - 7], [cx + wBase + 5, base],
+      [cx + wBase + 1, base], [cx + wBase - 3, base - 6]
+    ]);
+    c.fillStyle = 'rgba(40,26,14,.22)';
+    c.fillRect(cx - wBase - 4, base - 1, wBase * 2 + 8, 2);
+  }
+}
+
+/** 砍痕 */
+function chopMarks(c: Ctx, cx: number, top: number, base: number, halfW: number, dmg: number) {
+  if (dmg <= 0.02) return;
+  const n = dmg > 0.66 ? 3 : dmg > 0.33 ? 2 : 1;
+  for (let i = 0; i < n; i++) {
+    const y = base - 7 - i * 8;
+    if (y < top + 2) break;
+    const w = halfW * 1.6;
+    c.fillStyle = '#c8a274';
+    poly(c, [
+      [cx - w, y], [cx + w, y + 1], [cx + w * 0.7, y + 4], [cx - w * 0.8, y + 3]
+    ]);
+    c.fillStyle = 'rgba(52,34,18,.4)';
+    c.fillRect(cx - w * 0.8, y + 3, w * 1.5, 1);
+  }
+}
+
+/* ---------------- 灌木 ---------------- */
+
+function drawShrub(c: Ctx, cx: number, baseY: number, dmg: number, nowMs: number, tx: number, ty: number) {
+  const sway = Math.sin(nowMs / 1200 + tx) * 0.7;
+  const s = 1 - dmg * 0.3;
+  const seed = tx * 31 + ty * 7;
+
+  c.fillStyle = 'rgba(56,38,20,.18)';
+  c.beginPath(); c.ellipse(cx, baseY + 2, 15 * s, 4, 0, 0, Math.PI * 2); c.fill();
+
+  // 贴地的一丛：没有树干，冠底压得更低
+  canopy(
+    c, cx + sway, baseY - 9 * s, 12 * s, seed,
+    pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+  );
+
+  // 两根探出来的细枝，避免看起来像一堆草
+  c.strokeStyle = shift(pal.trunk, -6);
+  c.lineWidth = 1.4;
+  c.beginPath();
+  c.moveTo(cx - 4 + sway, baseY - 2);
+  c.lineTo(cx - 9 + sway, baseY - 12 * s);
+  c.moveTo(cx + 5 + sway, baseY - 2);
+  c.lineTo(cx + 10 + sway, baseY - 10 * s);
+  c.stroke();
+
+  // 浆果
+  if (dmg < 0.5) {
+    c.fillStyle = '#b8495f';
+    c.beginPath(); c.arc(cx - 5 + sway, baseY - 8 * s, 1.6, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(cx + 6 + sway, baseY - 6 * s, 1.4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,220,220,.55)';
+    c.fillRect(cx - 6 + sway, baseY - 9 * s, 1, 1);
+  }
+}
+
+/* ---------------- 小树 ---------------- */
+
+function drawSapling(c: Ctx, cx: number, baseY: number, dmg: number, nowMs: number, tx: number, ty: number) {
+  const sway = Math.sin(nowMs / 1000 + tx) * (0.8 + dmg * 2);
+  const top = baseY - 19;
+  const seed = tx * 17 + ty * 13;
+
+  c.fillStyle = 'rgba(56,38,20,.18)';
+  c.beginPath(); c.ellipse(cx, baseY + 2, 12, 4, 0, 0, Math.PI * 2); c.fill();
+
+  trunk(c, cx + sway * 0.25, top, baseY, 1.8, 3.2);
+
+  const R = 10.5 * (1 - dmg * 0.22);
+  canopy(
+    c, cx + sway, baseY - 26, R, seed,
+    pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+  );
+
+  chopMarks(c, cx, top, baseY, 3.2, dmg);
+}
+
+/* ---------------- 大树 ---------------- */
+
+function drawBigTree(c: Ctx, cx: number, baseY: number, dmg: number, nowMs: number, tx: number, ty: number) {
+  const sway = Math.sin(nowMs / 1200 + tx) * (1 + dmg * 3.5);
+  const top = baseY - 32;
+  const seed = tx * 23 + ty * 11;
+
+  c.fillStyle = 'rgba(56,38,20,.22)';
+  c.beginPath(); c.ellipse(cx, baseY + 3, 23, 6, 0, 0, Math.PI * 2); c.fill();
+
+  trunk(c, cx + sway * 0.2, top, baseY, 4.5, 7.5);
+
+  // 两根斜出的枝条，破掉"棒棒糖"的轮廓
+  c.strokeStyle = pal.trunk;
+  c.lineWidth = 2.6;
+  c.beginPath();
+  c.moveTo(cx + sway * 0.2, top + 6);
+  c.lineTo(cx - 14 + sway * 0.6, top - 6);
+  c.moveTo(cx + sway * 0.2, top + 2);
+  c.lineTo(cx + 15 + sway * 0.6, top - 10);
+  c.stroke();
+
+  // 主冠（大）+ 侧冠（小、偏下），形成不对称
+  const R = 17 * (1 - dmg * 0.26);
+  canopy(
+    c, cx - 11 + sway * 0.7, baseY - 44, R * 0.78, seed + 5,
+    pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+  );
+  canopy(
+    c, cx + 12 + sway * 0.7, baseY - 47, R * 0.7, seed + 9,
+    pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+  );
+  canopy(
+    c, cx + sway * 0.8, baseY - 54, R, seed,
+    pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+  );
+
+  chopMarks(c, cx, top, baseY, 7.5, dmg);
+}
+
+/* ---------------- 老树桩 ---------------- */
+
+function drawStump(c: Ctx, cx: number, baseY: number, dmg: number, tx: number, ty: number) {
+  const w = 10.5;
+  const R = 6.5;
+  const top = baseY - 14;
+  const seed = tx * 29 + ty * 5;
+
+  c.fillStyle = 'rgba(56,38,20,.2)';
+  c.beginPath(); c.ellipse(cx, baseY + 2, 15, 4, 0, 0, Math.PI * 2); c.fill();
+
+  // 桩身：略呈梯形，底部外扩
+  c.fillStyle = pal.trunkLine;
+  poly(c, [
+    [cx - w, top], [cx + w, top],
+    [cx + w + 3, baseY], [cx - w - 3, baseY]
+  ]);
+  c.fillStyle = pal.trunk;
+  poly(c, [
+    [cx - w + 1, top + 1], [cx + w - 1, top + 1],
+    [cx + w + 2, baseY - 1], [cx - w - 2, baseY - 1]
+  ]);
+  c.fillStyle = shift(pal.trunk, 26);
+  poly(c, [
+    [cx - w + 1, top + 1], [cx - w * 0.35, top + 1],
+    [cx - w * 0.45, baseY - 1], [cx - w - 2, baseY - 1]
+  ]);
+  c.fillStyle = shift(pal.trunk, -30);
+  poly(c, [
+    [cx + w * 0.45, top + 1], [cx + w - 1, top + 1],
+    [cx + w + 2, baseY - 1], [cx + w * 0.55, baseY - 1]
+  ]);
+
+  // 树皮纵纹（不规则断口）
+  c.fillStyle = 'rgba(48,30,16,.3)';
+  for (let i = 0; i < 5; i++) {
+    const px = cx - w + 2 + hash(seed + i, i * 3) * (w * 2 - 4);
+    const h = 4 + hash(seed + i * 5, i) * 8;
+    c.fillRect(Math.round(px), Math.round(top + 3 + hash(seed, i) * 4), 1, Math.round(h));
+  }
+
+  // 根部
+  c.fillStyle = pal.trunk;
+  poly(c, [
+    [cx - w - 2, baseY - 5], [cx - w - 7, baseY],
+    [cx - w - 1, baseY], [cx - w + 2, baseY - 4]
+  ]);
+  poly(c, [
+    [cx + w + 2, baseY - 5], [cx + w + 7, baseY],
+    [cx + w + 1, baseY], [cx + w - 2, baseY - 4]
+  ]);
+
+  // 断面：年轮 + 朽洞
+  c.fillStyle = '#b08256';
+  c.beginPath(); c.ellipse(cx, top + 1, w - 0.5, R * 0.62, 0, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#8a6038';
+  c.lineWidth = 1;
+  for (const k of [0.72, 0.46, 0.24]) {
+    c.beginPath();
+    c.ellipse(cx, top + 1, (w - 1) * k, (R * 0.62 - 0.4) * k, 0, 0, Math.PI * 2);
+    c.stroke();
+  }
+  c.fillStyle = '#3e2c18';
+  c.beginPath(); c.ellipse(cx + 2.5, top + 1.4, 2.6, 1.5, 0, 0, Math.PI * 2); c.fill();
+
+  // 青苔
+  c.fillStyle = 'rgba(92,136,68,.8)';
+  poly(c, [
+    [cx - w - 1, baseY - 6], [cx - w + 5, baseY - 7],
+    [cx - w + 6, baseY - 1], [cx - w - 2, baseY - 1]
+  ]);
+  c.fillStyle = 'rgba(118,164,86,.75)';
+  c.fillRect(cx - w + 1, baseY - 6, 3, 2);
+
+  // 被挖开的裂痕
+  if (dmg > 0.3) {
+    c.strokeStyle = 'rgba(62,44,24,.65)';
+    c.lineWidth = 1.6;
+    c.beginPath();
+    c.moveTo(cx - 5, top + 2); c.lineTo(cx - 2, baseY - 6);
+    c.stroke();
+  }
+  if (dmg > 0.66) {
+    c.beginPath();
+    c.moveTo(cx + 6, top + 2); c.lineTo(cx + 3, baseY - 7);
+    c.stroke();
+  }
+}
+
+/** 四类木材节点的统一入口 */
+function drawWoodNode(c: Ctx, node: ResNode, cx: number, baseY: number, nowMs: number) {
+  const dmg = node.maxHp > 0 ? 1 - node.hp / node.maxHp : 1;
+
+  // 砍倒后：灌木消失、树桩消失，小树/大树留茬
+  if (node.hp <= 0) {
+    if (node.kind === 'shrub' || node.kind === 'stump') return;
+    const big = node.kind === 'tree';
+    const w = big ? 8.5 : 5;
+    c.fillStyle = 'rgba(56,38,20,.16)';
+    c.beginPath(); c.ellipse(cx, baseY + 2, w + 5, 3.6, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = pal.trunkLine;
+    poly(c, [
+      [cx - w, baseY - (big ? 11 : 7)], [cx + w, baseY - (big ? 11 : 7)],
+      [cx + w + 2, baseY], [cx - w - 2, baseY]
+    ]);
+    c.fillStyle = pal.trunk;
+    poly(c, [
+      [cx - w + 1, baseY - (big ? 10 : 6)], [cx + w - 1, baseY - (big ? 10 : 6)],
+      [cx + w + 1, baseY - 1], [cx - w - 1, baseY - 1]
+    ]);
+    c.fillStyle = '#b08256';
+    c.beginPath();
+    c.ellipse(cx, baseY - (big ? 10 : 6), w - 0.5, (big ? 4 : 3), 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = '#8a6038'; c.lineWidth = 1;
+    c.beginPath();
+    c.ellipse(cx, baseY - (big ? 10 : 6), (w - 1) * 0.55, (big ? 2.2 : 1.6), 0, 0, Math.PI * 2);
+    c.stroke();
+    return;
+  }
+
+  if (node.kind === 'shrub') drawShrub(c, cx, baseY, dmg, nowMs, node.tx, node.ty);
+  else if (node.kind === 'sapling') drawSapling(c, cx, baseY, dmg, nowMs, node.tx, node.ty);
+  else if (node.kind === 'stump') drawStump(c, cx, baseY, dmg, node.tx, node.ty);
+  else drawBigTree(c, cx, baseY, dmg, nowMs, node.tx, node.ty);
+}
+
 function drawNode(c: Ctx, node: ResNode, nowMs: number) {
   const x = node.tx * TILE;
   const y = node.ty * TILE;
@@ -2800,47 +3164,8 @@ function drawNode(c: Ctx, node: ResNode, nowMs: number) {
   c.ellipse(cx, baseY + 4, 20, 6, 0, 0, Math.PI * 2);
   c.fill();
 
-  if (node.kind === 'tree') {
-    if (node.hp <= 0) {
-      // 树桩
-      c.fillStyle = '#7a5433';
-      c.fillRect(cx - 9, baseY - 10, 18, 12);
-      c.fillStyle = '#a97c4f';
-      c.beginPath();
-      c.ellipse(cx, baseY - 10, 9, 4, 0, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#8a6038';
-      c.beginPath();
-      c.ellipse(cx, baseY - 10, 5, 2, 0, 0, Math.PI * 2);
-      c.fill();
-      return;
-    }
-    const dmg = 1 - node.hp / node.maxHp;
-    const sway = Math.sin(nowMs / 900 + node.tx) * (1.5 + dmg * 4);
-    // 树干
-    c.fillStyle = pal.trunk;
-    c.fillRect(cx - 4 + sway * 0.3, baseY - 22, 8, 22);
-    // 树冠
-    const r = 22 - dmg * 6;
-    c.fillStyle = pal.foliage[0];
-    c.beginPath();
-    c.ellipse(cx + sway, baseY - 34, r, r * 0.82, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = pal.foliage[1];
-    c.beginPath();
-    c.ellipse(cx + sway - 7, baseY - 40, r * 0.72, r * 0.6, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = pal.foliage[2];
-    c.beginPath();
-    c.ellipse(cx + sway + 8, baseY - 32, r * 0.6, r * 0.52, 0, 0, Math.PI * 2);
-    c.fill();
-    // 砍痕
-    if (dmg > 0) {
-      c.fillStyle = '#c8a274';
-      c.fillRect(cx - 4, baseY - 16, 8, 3);
-      if (dmg > 0.3) c.fillRect(cx - 4, baseY - 10, 8, 3);
-      if (dmg > 0.6) c.fillRect(cx - 4, baseY - 4, 8, 3);
-    }
+  if (isWoodKind(node.kind)) {
+    drawWoodNode(c, node, cx, baseY, nowMs);
   } else if (node.kind === 'rock') {
     const dmg = node.hp <= 0 ? 1 : 1 - node.hp / node.maxHp;
     if (node.hp <= 0) {

@@ -151,10 +151,34 @@ export const AREA_UNLOCK_COST = [0, 2500, 8000, 16000];
 /** 兼容旧代码：第一块耕地 */
 export const FARM = FARM_AREAS[0];
 
-/** 可砍伐的树（动态节点） */
+/**
+ * 四种木材来源的分布。
+ * 刻意按"离农场由近到远"排：树桩和灌木在近处（开局就能砍），
+ * 大树放在外围（要走远、费体力，但一趟拉满）。
+ */
+/** 大树：4 下才倒，5~8 木材 */
+export const BIG_TREE_SPOTS: Array<[number, number]> = [
+  [12, 4], [19, 3], [26, 4], [29, 6], [19, 20]
+];
+
+/** 小树：2 下，2~3 木材 */
+export const SAPLING_SPOTS: Array<[number, number]> = [
+  [16, 6], [22, 6], [27, 6], [11, 4], [30, 8]
+];
+
+/** 灌木：1 下就倒，1 木材，但两天就长回来 */
+export const SHRUB_SPOTS: Array<[number, number]> = [
+  [14, 6], [17, 6], [24, 6], [9, 6], [20, 4], [28, 5]
+];
+
+/** 老树桩：一次性，挖掉永久消失 */
+export const STUMP_SPOTS: Array<[number, number]> = [
+  [2, 4], [2, 12], [31, 14]
+];
+
+/** 兼容旧代码：所有树的坐标 */
 export const TREE_SPOTS: Array<[number, number]> = [
-  [12, 4], [13, 4], [19, 3], [26, 4], [29, 6], [2, 4],
-  [2, 12], [19, 12], [20, 14], [30, 8], [31, 14], [19, 20]
+  ...BIG_TREE_SPOTS, ...SAPLING_SPOTS, ...SHRUB_SPOTS, ...STUMP_SPOTS
 ];
 
 /** 可开采的岩石（动态节点）；原 y8 的四块让位给进镇道路，移到镇西石堆 */

@@ -3,6 +3,7 @@
    ============================================================ */
 
 import { CFG, CROPS, CROP_ORDER, cropName, cropSeedName } from './config';
+import { isWoodKind } from './types';
 import { storage } from './platform';
 import { Sound } from './audio';
 import { TypingSession } from './typing';
@@ -14,7 +15,7 @@ import {
 } from './seasons';
 import {
   buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
-  TREE_SPOTS, ROCK_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
+  ROCK_SPOTS, BIG_TREE_SPOTS, SAPLING_SPOTS, SHRUB_SPOTS, STUMP_SPOTS, isOpenGround, MAP_W, MAP_H, plotIndexOf, inAnimalArea, inTownArea,
   unlockArea, areaUnlocked, plotAreaOf, AREA_UNLOCK_COST, FARM_AREAS, isBlockedTile, VIEW_W, VIEW_H,
   ROOMS, FARM_DOORS, farmExitSpot, isIndoor, getScene, targetAt, isShopScene,
   MINE_ROOM, MINE_FLOORS, mineOrePlan, getMineFloor, setMineFloor, TOWN_BUILDINGS
@@ -289,10 +290,19 @@ const session = new TypingSession({
 
 /* ---------------- 状态构造 ---------------- */
 
-function makeNodes(): ResNode[] {  const nodes: ResNode[] = [];
-  for (const [tx, ty] of TREE_SPOTS) {
-    nodes.push({ key: `t:${tx},${ty}`, kind: 'tree', tx, ty, hp: 3, maxHp: 3, regrowDay: 0 });
-  }
+function makeNodes(): ResNode[] {
+  const nodes: ResNode[] = [];
+  /** 按类别批量生成；hp 从 NODE_DEFS 取，避免两处各写一遍 */
+  const addWood = (spots: Array<[number, number]>, kind: NodeKind): void => {
+    const hp = NODE_DEFS[kind].hp;
+    for (const [tx, ty] of spots) {
+      nodes.push({ key: `${kind[0]}:${tx},${ty}`, kind, tx, ty, hp, maxHp: hp, regrowDay: 0 });
+    }
+  };
+  addWood(BIG_TREE_SPOTS, 'tree');
+  addWood(SAPLING_SPOTS, 'sapling');
+  addWood(SHRUB_SPOTS, 'shrub');
+  addWood(STUMP_SPOTS, 'stump');
   for (const [tx, ty] of ROCK_SPOTS) {
     nodes.push({ key: `r:${tx},${ty}`, kind: 'rock', tx, ty, hp: 2, maxHp: 2, regrowDay: 0 });
   }
@@ -490,9 +500,9 @@ function newState(): GameState {
 
 function syncBlockers(s: GameState): void {
   for (const n of s.nodes) {
-    if (n.kind === 'tree' || n.kind === 'rock') {
-      setNodeBlock(n.tx, n.ty, n.hp > 0);
-    }
+    // 灌木矮，能从上面走过去；其它木头和岩石挡路
+    const solid = n.kind === 'rock' || n.kind === 'sapling' || n.kind === 'tree' || n.kind === 'stump';
+    if (solid) setNodeBlock(n.tx, n.ty, n.hp > 0);
   }
 }
 
@@ -763,7 +773,7 @@ function hitNode(node: ResNode, tool: ToolId, perfect: boolean): void {
   }
   if (left > 0) UI.toast('背包满了，有些东西散落在地里消失了', 'bad');
 
-  if (node.kind === 'tree') {
+  if (isWoodKind(node.kind)) {
     state.stats.chopped++;
     Sound.play('harvest');
   } else if (node.kind === 'rock') {

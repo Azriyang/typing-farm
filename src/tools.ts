@@ -4,6 +4,7 @@
 
 import type { ToolId, NodeKind } from './types';
 import type { WordCategory } from './words';
+import { isEn, toolNameEn, actionNameEn, nodeNameEn, tierNameEn } from './i18n';
 
 export type ToolTarget = 'soil' | 'crop' | 'tree' | 'rock' | 'weed' | 'water';
 
@@ -29,7 +30,7 @@ export interface ToolDef {
   flavor: string;
 }
 
-export const TOOLS: Record<ToolId, ToolDef> = {
+const TOOLS_RAW: Record<ToolId, ToolDef> = {
   hoe: {
     id: 'hoe', name: '锄头', icon: '🔨', target: 'soil', price: 0,
     stamina: 4, time: 10, wordCat: 'farm', band: 1, repeat: 1, timeScale: 1,
@@ -86,7 +87,25 @@ export interface TierInfo {
   desc: string;
 }
 
-export const TIERS: TierInfo[] = [
+/**
+ * 英文模式下返回带英文名的副本，这样所有 `TOOLS[x].name` 的调用点
+ * 都不用改。Proxy 只拦属性读取，Object.keys 等行为不受影响。
+ */
+export const TOOLS: Record<ToolId, ToolDef> = new Proxy(TOOLS_RAW, {
+  get(target, prop) {
+    const def = (target as Record<string, ToolDef>)[prop as string];
+    if (!def || typeof def !== 'object') return def;
+    if (!isEn()) return def;
+    return {
+      ...def,
+      name: toolNameEn(def.id) ?? def.name,
+      actionLabel: actionNameEn(def.actionLabel) ?? def.actionLabel
+    };
+  }
+});
+
+
+const TIERS_RAW: TierInfo[] = [
   { tier: 1, name: '铜', cost: 0, wood: 0, stone: 0, stamina: 1.0, time: 1.0, tolerance: 0, desc: '朴素但顺手' },
   { tier: 2, name: '银', cost: 600, wood: 8, stone: 0, stamina: 0.9, time: 1.0, tolerance: 1, desc: '打错一次不算失误' },
   { tier: 3, name: '金', cost: 1800, wood: 0, stone: 20, stamina: 0.85, time: 1.25, tolerance: 1, desc: '时限 +25%' },
@@ -189,7 +208,7 @@ export interface NodeDef {
   tool: ToolId;
 }
 
-export const NODE_DEFS: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> = {
+const NODE_RAW: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> = {
   tree: { kind: 'tree', name: '树', hp: 3, drop: 'mat.wood', dropMin: 2, dropMax: 4, regrow: 3, tool: 'axe' },
   rock: { kind: 'rock', name: '岩石', hp: 2, drop: 'mat.stone', dropMin: 2, dropMax: 3, regrow: 5, tool: 'pick' },
   weed: { kind: 'weed', name: '杂草', hp: 1, drop: 'mat.fiber', dropMin: 1, dropMax: 2, regrow: 0, tool: 'sickle' },
@@ -198,3 +217,22 @@ export const NODE_DEFS: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron
   oreIron: { kind: 'oreIron', name: '铁矿脉', hp: 3, drop: 'mat.iron', dropMin: 1, dropMax: 2, regrow: 0, tool: 'pick' },
   oreGem: { kind: 'oreGem', name: '宝石矿脉', hp: 4, drop: 'mat.gem', dropMin: 1, dropMax: 2, regrow: 0, tool: 'pick' }
 };
+/** 资源节点：名称本地化 */
+export const NODE_DEFS: Record<'tree' | 'rock' | 'weed' | 'oreCopper' | 'oreIron' | 'oreGem', NodeDef> =
+  new Proxy(NODE_RAW, {
+    get(target, prop) {
+      const def = (target as Record<string, NodeDef>)[prop as string];
+      if (!def || typeof def !== 'object') return def;
+      if (!isEn()) return def;
+      return { ...def, name: nodeNameEn(def.kind) ?? def.name };
+    }
+  });
+/** 工具等级：名称本地化（放在文件末尾，避免引用尚未初始化的 TIERS_RAW） */
+export const TIERS: TierInfo[] = new Proxy(TIERS_RAW, {
+  get(target, prop) {
+    const v = (target as unknown as Record<string, TierInfo>)[prop as string];
+    if (!v || typeof v !== 'object') return v;
+    if (!isEn()) return v;
+    return { ...v, name: tierNameEn(v.name) ?? v.name };
+  }
+});

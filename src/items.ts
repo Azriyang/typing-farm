@@ -4,6 +4,7 @@
 
 import { CFG, CROPS, CROP_ORDER } from './config';
 import type { CropId, ItemDef, ItemKind, ItemStack } from './types';
+import { isEn, itemNameEn, itemDescEn } from './i18n';
 
 const REG = new Map<string, ItemDef>();
 
@@ -127,7 +128,18 @@ reg({ id: 'food.creamsoup', kind: 'food', name: '奶油浓汤', icon: '🍜', ma
 /* ---------------- 查询 ---------------- */
 
 export function getDef(id: string): ItemDef | undefined {
-  return REG.get(id);
+  const def = REG.get(id);
+  if (!def) return undefined;
+  if (!isEn()) return def;
+  // 英文模式下返回一份带英文名的副本：
+  // 这样所有 getDef(x).name 的调用点都自动本地化，不用逐个改。
+  const cropId = id.startsWith('seed.') || id.startsWith('crop.') || id.startsWith('flower.')
+    ? id.slice(id.indexOf('.') + 1)
+    : undefined;
+  const cropEn = cropId ? CROPS[cropId as CropId]?.en : undefined;
+  const name = itemNameEn(id, cropEn) ?? def.name;
+  const desc = itemDescEn(id) ?? def.desc;
+  return { ...def, name, desc };
 }
 
 export function seedItemId(crop: CropId): string {

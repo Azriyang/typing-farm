@@ -3,6 +3,7 @@
    ============================================================ */
 
 import type { CropDef, CropId, Word } from './types';
+import { isEn } from './i18n';
 
 export const CROPS: Record<CropId, CropDef> = {
   turnip: {
@@ -230,4 +231,20 @@ export const STAR = ['☆', '★'];
 export function stars(q: number): string {
   const n = Math.max(0, Math.min(5, Math.round(q)));
   return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+/* ---------------- 本地化访问器 ---------------- */
+
+/** 作物显示名：英文模式下用 en 字段 */
+export function cropName(id: CropId): string {
+  const c = CROPS[id];
+  if (!c) return id;
+  if (!isEn()) return c.zh;
+  return c.en.replace(/\b[a-z]/g, (m) => m.toUpperCase());
+}
+
+/** 种子显示名 */
+export function cropSeedName(id: CropId): string {
+  const c = CROPS[id];
+  if (!c) return id;
+  return isEn() ? cropName(id) + ' Seeds' : c.zh + (c.kind === 'flower' ? '花种' : '种子');
 }

@@ -7,6 +7,7 @@
 
 import type { Animal, AnimalKind, Dir, GameState } from './types';
 import { TILE, PENS, getScene, sceneOfAnimal, indoorAnimalPos } from './world';
+import { isEn, animalNameEn, productNameEn } from './i18n';
 
 export interface AnimalDef {
   kind: AnimalKind;
@@ -23,7 +24,7 @@ export interface AnimalDef {
   yield: 'daily' | 'shear';
 }
 
-export const ANIMAL_DEFS: Record<AnimalKind, AnimalDef> = {
+const ANIMAL_RAW: Record<AnimalKind, AnimalDef> = {
   chicken: {
     kind: 'chicken', name: '鸡', icon: '🐔', price: 600,
     productId: 'prod.egg', productName: '鸡蛋', productIcon: '🥚',
@@ -42,6 +43,20 @@ export const ANIMAL_DEFS: Record<AnimalKind, AnimalDef> = {
 };
 
 export const ANIMAL_ORDER: AnimalKind[] = ['chicken', 'cow', 'sheep'];
+
+/** 英文模式下返回带英文名的副本，调用点无需改动 */
+export const ANIMAL_DEFS: Record<AnimalKind, AnimalDef> = new Proxy(ANIMAL_RAW, {
+  get(target, prop) {
+    const def = (target as Record<string, AnimalDef>)[prop as string];
+    if (!def || typeof def !== 'object') return def;
+    if (!isEn()) return def;
+    return {
+      ...def,
+      name: animalNameEn(def.kind) ?? def.name,
+      productName: productNameEn(def.productName) ?? def.productName
+    };
+  }
+});
 
 /** 羊毛每晚的成长量：约 3 天可剪一次 */
 const WOOL_PER_NIGHT = 34;

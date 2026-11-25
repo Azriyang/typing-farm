@@ -4,13 +4,14 @@
 
 import { CFG } from './config';
 import { TOOLS, toolMaxDurability, durabilityRatio, DURABILITY_WARN } from './tools';
-import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyOf } from './difficulty';
+import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyOf, difficultyName, difficultyDesc } from './difficulty';
 import { getDef } from './items';
 import { usedSlots } from './items';
-import { seasonOfDay, dayInSeason, SEASON_LABEL, SEASON_ICON, WEATHER_LABEL, WEATHER_ICON, festivalOfDay } from './seasons';
+import { seasonOfDay, dayInSeason, seasonLabel, SEASON_ICON, weatherLabel, WEATHER_ICON, festivalOfDay } from './seasons';
 import type { DifficultyId } from './difficulty';
 import type { GameState } from './types';
 import type { TypingSession } from './typing';
+import { isEn, t } from './i18n';
 
 /** 场景切换的淡入：让「走进去」有一点仪式感，而不是硬切 */
 export function fadeScene(): void {
@@ -112,19 +113,21 @@ export function syncHud(state: GameState): void {
 
   $('hud-day').textContent = String(state.day);
   $('hud-clock').textContent = clockText(state.time);
-  $('hud-weather').textContent = WEATHER_LABEL[state.weather];
+  $('hud-weather').textContent = weatherLabel(state.weather);
   $('hud-weather-ico').textContent = WEATHER_ICON[state.weather];
   const season = seasonOfDay(state.day);
-  $('hud-season').textContent = SEASON_LABEL[season];
+  $('hud-season').textContent = seasonLabel(season);
   $('hud-season-ico').textContent = SEASON_ICON[season];
-  $('hud-season-day').textContent = `第${dayInSeason(state.day)}天`;
+  $('hud-season-day').textContent = isEn() ? `Day ${dayInSeason(state.day)}` : `第${dayInSeason(state.day)}天`;
 
   // 难度徽章
   const d = difficultyOf(state.difficulty);
   $('hud-diff-ico').textContent = d.icon;
-  $('hud-diff-name').textContent = d.name;
+  $('hud-diff-name').textContent = difficultyName(state.difficulty);
   $('hud-diff').className = 'stat diff ' + d.id;
-  $('hud-diff').title = `${d.desc}（点击切换）`;
+  $('hud-diff').title = isEn()
+    ? `${difficultyDesc(state.difficulty)} (click to change)`
+    : `${difficultyDesc(state.difficulty)}（点击切换）`;
 
   const fest = festivalOfDay(state.day);
   const festEl = $('hud-festival');
@@ -217,7 +220,7 @@ export function renderDiffPicker(
     const el = document.createElement('button');
     el.className = 'diff-card' + (id === current ? ' sel' : '') + ' ' + id;
     el.innerHTML = `<span class="dc-ico">${d.icon}</span><span class="dc-name">${d.name}</span>`;
-    el.title = d.desc;
+    el.title = difficultyDesc(id);
     el.addEventListener('click', () => onPick(id));
     cards.appendChild(el);
   }
@@ -268,8 +271,9 @@ export function syncTyping(session: TypingSession, actionLabel: string, combo: n
 
   card.className = 'typing-card active';
   $('t-action').textContent = actionLabel;
-  // 中文提示始终显示——顺带记住词义，隐藏它只是剥夺信息，不是增加难度
-  $('t-zh').textContent = nowWord.zh;
+  // 中文模式显示词义，顺带记词；英文模式的中文词义没有意义，
+  // 换成一句英文提示——对母语者是纯键盘练习，对中文玩家是学习辅助。
+  $('t-zh').textContent = isEn() ? 'type it out' : nowWord.zh;
   $('t-en').innerHTML = wordMarkup(nowWord.text, session.typed);
 
   let chain = '';
@@ -313,7 +317,7 @@ export function syncFishing(phase: 'wait' | 'bite', progress: number, label: str
     lastTypingKey = '';
     card.className = 'typing-card ' + (phase === 'bite' ? 'bite' : 'active');
     $('t-action').textContent = label;
-    $('t-zh').textContent = phase === 'bite' ? '咬钩了！按 空格' : '等待咬钩…';
+    $('t-zh').textContent = phase === 'bite' ? t('咬钩了！按 空格', 'Bite! Press Space') : t('等待咬钩…', 'Waiting for a bite…');
     $('t-en').textContent = phase === 'bite' ? '!!!' : '· · ·';
     $('t-chain').innerHTML = '';
     $('t-combo').textContent = '';

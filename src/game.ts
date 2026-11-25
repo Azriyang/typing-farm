@@ -2,7 +2,7 @@
    game.ts — 主循环、交互、背包、工具、农作、经济、存档
    ============================================================ */
 
-import { CFG, CROPS, CROP_ORDER } from './config';
+import { CFG, CROPS, CROP_ORDER, cropName, cropSeedName } from './config';
 import { storage } from './platform';
 import { Sound } from './audio';
 import { TypingSession } from './typing';
@@ -10,7 +10,7 @@ import { initRenderer, render, burst, floatText, debugCamera, debugSampleBase, a
 import * as UI from './ui';
 import {
   seasonOfDay, rollWeather, weatherWaters, growthMultiplier, isInSeason,
-  SEASON_LABEL, SEASON_ICON, festivalOfDay, festivalTomorrow, festivalEffects
+  seasonLabel, SEASON_ICON, festivalOfDay, festivalTomorrow, festivalEffects
 } from './seasons';
 import {
   buildScene, facingTile, plotTileOf, canStand, setNodeBlock, TILE, PLOT_COUNT,
@@ -21,7 +21,7 @@ import {
 } from './world';
 import type { IndoorScene } from './world';
 import {
-  DIFFICULTY_ORDER, difficultyOf, applyDifficulty, shiftBand
+  DIFFICULTY_ORDER, difficultyOf, difficultyName, difficultyDesc, applyDifficulty, shiftBand
 } from './difficulty';
 import type { DifficultyId } from './difficulty';
 import {
@@ -43,6 +43,7 @@ import {
   COOK_RECIPES, cookRecipeById, isFood, foodStamina, cookInputText, cookOutName,
   inputValue, TIER_LABEL
 } from './cook';
+import { t, tr, getLang, setLang, applyStaticI18n } from './i18n';
 import { findPath, nearestWalkable, simplifyPath } from './pathfind';
 import { rollRequests } from './requests';
 import { RELICS, relicById, newlyUnlocked } from './relics';
@@ -670,10 +671,10 @@ function applyAction(p: Pending, perfect: boolean): void {
       Bag.removeFromBag(state.bag, Bag.seedItemId(p.crop), 1);
       const c = plotCenter(i);
       burst(c.x, c.y + 12, '#9ad06a', 8);
-      floatText(c.x, c.y - 12, `种下 ${CROPS[p.crop].zh}`, '#d8f5c0');
+      floatText(c.x, c.y - 12, tr('种下 {n}', 'Planted {n}', { n: cropName(p.crop) }), '#d8f5c0');
       Sound.play('plant');
       if (!isInSeason(CROPS[p.crop], seasonOfDay(state.day))) {
-        UI.toast(`${CROPS[p.crop].zh}不是当季作物，会长得慢一倍`, 'bad');
+        UI.toast(tr('{n}不是当季作物，会长得慢一倍', '{n} is out of season — it will grow at half speed', { n: cropName(p.crop) }), 'bad');
       }
       break;
     }
@@ -709,7 +710,7 @@ function applyAction(p: Pending, perfect: boolean): void {
       const c = plotCenter(i);
       burst(c.x, c.y, def.fruit, 16, 1.2);
       burst(c.x, c.y, '#ffe9a8', 6, 1.4);
-      floatText(c.x, c.y - 14, `${def.zh} ${'★'.repeat(q)}`, '#fff2b8', 15);
+      floatText(c.x, c.y - 14, `${cropName(cropId)} ${'★'.repeat(q)}`, '#fff2b8', 15);
       Sound.play('harvest');
       break;
     }
@@ -1231,7 +1232,7 @@ function openCraftPanel(): void {
       ...(job && nowAbs >= job.doneAt
         ? [{ label: '取出', cls: 'green', onClick: () => collectCraft() }]
         : []),
-      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+      { label: t('关闭', 'Close'), cls: 'ghost', onClick: () => UI.hideModal() }
     ]
   );
 
@@ -1884,7 +1885,7 @@ function aiBriefOf(v: Villager): VillagerBrief | null {
     voice: def.voice,
     catchphrase: def.catchphrase,
     doing: v.doing,
-    season: SEASON_LABEL[seasonOfDay(state.day)],
+    season: seasonLabel(seasonOfDay(state.day)),
     hearts: hearts(v.friendship)
   };
 }
@@ -1959,7 +1960,7 @@ function openAiSettings(): void {
     [
       { label: '保存', cls: 'green', onClick: () => { void saveAiSettings(); } },
       { label: '测试', cls: '', onClick: () => { void testAi(); } },
-      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+      { label: t('关闭', 'Close'), cls: 'ghost', onClick: () => UI.hideModal() }
     ]
   );
 
@@ -2047,7 +2048,7 @@ function openSaveFilePanel(): void {
     [
       { label: '导出文件', cls: 'green', onClick: () => doExportSave() },
       { label: '导入文件', cls: '', onClick: () => pickImportFile() },
-      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+      { label: t('关闭', 'Close'), cls: 'ghost', onClick: () => UI.hideModal() }
     ]
   );
 
@@ -2758,7 +2759,7 @@ function openShop(): void {
     const inSeason = c.season === curSeason;
     const seasonTag = inSeason
       ? `<span class="season-tag in">${SEASON_ICON[c.season]} 当季</span>`
-      : `<span class="season-tag off">${SEASON_ICON[c.season]} ${SEASON_LABEL[c.season]}季 · 慢一倍</span>`;
+      : `<span class="season-tag off">${SEASON_ICON[c.season]} ${seasonLabel(c.season)} · 慢一倍</span>`;
     const saleTag = fest.seedMult < 1 ? `<span class="season-tag in">半价</span>` : '';
     const oldPrice = fest.seedMult < 1 ? `<s class="dm">${c.seed}G</s> ` : '';
     const isFlower = c.kind === 'flower';
@@ -2767,7 +2768,7 @@ function openShop(): void {
       : `${c.days}天成熟 · 售${c.price}G · 持有 ${stock}`;
     return `<div class="shop-row${cant}">
       <div>
-        <div class="nm">${c.emoji} ${c.zh}${isFlower ? '花种' : '种子'} <span class="dm">${c.en}</span> ${seasonTag}${saleTag}</div>
+        <div class="nm">${c.emoji} ${cropSeedName(id)} <span class="dm">${c.en}</span> ${seasonTag}${saleTag}</div>
         <div class="dt">${infoLine}</div>
       </div>
       <div class="pr">${oldPrice}${price}G</div>
@@ -2880,7 +2881,7 @@ function openShop(): void {
 
   UI.showModal(
     '订购箱',
-    `<p class="dim">邮购直达。种子、工具、动物、背包扩容都在这儿。现在是 ${SEASON_ICON[curSeason]} <b>${SEASON_LABEL[curSeason]}季</b>，当季作物长得快。</p>
+    `<p class="dim">邮购直达。种子、工具、动物、背包扩容都在这儿。现在是 ${SEASON_ICON[curSeason]} <b>${seasonLabel(curSeason)}</b>，当季作物长得快。</p>
      <h3>种子</h3><div class="shop-list">${seedRows}</div>
      <h3>工具</h3><div class="shop-list">${toolRows}</div>
      <h3>动物</h3><div class="shop-list">${animalRows}</div>
@@ -2941,7 +2942,6 @@ function buyLand(): void {
 }
 
 function buySeed(id: CropId, n: number): void {
-  const c = CROPS[id];
   const cost = seedPrice(id) * n;
   if (state.coins < cost) { UI.toast('金币不够', 'bad'); return; }
   const item = Bag.makeStack(Bag.seedItemId(id), n);
@@ -2950,7 +2950,7 @@ function buySeed(id: CropId, n: number): void {
   state.coins -= cost;
   Bag.addToBag(state.bag, item);
   Sound.play('coin');
-  UI.toast(`购入 ${c.zh}种子 ×${n}`, 'good');
+  UI.toast(tr('购入 {n} ×{c}', 'Bought {n} ×{c}', { n: cropSeedName(id), c: n }), 'good');
   UI.resetHotbarCache();
   save();
   openShop();
@@ -3465,8 +3465,8 @@ function openDex(): void {
       ? `${c.days}天开花 · 送人好感高`
       : `${c.days}天 · ${c.price}G`;
     return `<div class="dex-item${isFlower ? ' flower' : ''}"><span class="em">${c.emoji}</span>
-      <span class="info"><b>${c.zh}</b> <span class="en">${c.en}</span><br>
-      ${tail} · ${SEASON_ICON[c.season]}${SEASON_LABEL[c.season]}季</span></div>`;
+      <span class="info"><b>${cropName(id)}</b> <span class="en">${c.en}</span><br>
+      ${tail} · ${SEASON_ICON[c.season]}${seasonLabel(c.season)}</span></div>`;
   }).join('');
   const toolsHtml = (Object.keys(TOOLS) as ToolId[]).map((id) => {
     const t = TOOLS[id];
@@ -3577,7 +3577,7 @@ function sleep(fainted = false): void {
       : '<p class="dim">☀️ 明天是个晴天，记得给作物浇水。</p>';
 
   const seasonNote = changedSeason
-    ? `<p class="season-note">${SEASON_ICON[newSeason]} <b>${SEASON_LABEL[newSeason]}天来了！</b>当季作物正常生长，反季的会慢一倍。</p>`
+    ? `<p class="season-note">${SEASON_ICON[newSeason]} <b>${seasonLabel(newSeason)} has arrived!</b>当季作物正常生长，反季的会慢一倍。</p>`
     : '';
 
   // 明天是节日 → 预告；今天是节日 → 小结
@@ -3882,14 +3882,14 @@ function openDifficulty(): void {
     const on = id === cur ? ' on' : '';
     return `<div class="diff-row${on}" data-diff="${id}">
       <span class="dr-ico">${d.icon}</span>
-      <span class="dr-main"><b>${d.name}</b><span class="dr-desc">${d.desc}</span></span>
+      <span class="dr-main"><b>${difficultyName(id)}</b><span class="dr-desc">${difficultyDesc(id)}</span></span>
       ${on ? '<span class="dr-check">✓</span>' : ''}
     </div>`;
   }).join('');
 
   UI.showModal(
-    '难度',
-    `<p class="dim">难度只影响打字手感（时限、容错、词长、失误惩罚），不影响收益。下次打字生效。</p>
+    t('难度', 'Difficulty'),
+    `<p class="dim">${t('难度只影响打字手感（时限、容错、词长、失误惩罚），不影响收益。下次打字生效。', 'Difficulty only changes typing feel (time limit, tolerance, word length, miss penalty). It never affects profit. Applies from your next word.')}</p>
      <div class="diff-list">${rows}</div>`,
     [{ label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }]
   );
@@ -3901,7 +3901,7 @@ function openDifficulty(): void {
       chosenDifficulty = id;
       save();
       UI.hideModal();
-      UI.toast(`难度切换为「${difficultyOf(id).name}」`, 'good');
+      UI.toast(tr('难度切换为「{n}」', 'Difficulty set to {n}', { n: difficultyName(id) }), 'good');
       UI.syncHud(state);
     });
   });
@@ -4105,6 +4105,13 @@ export function boot(): void {
   // AI 设置：只有桌面版才有意义，浏览器版点开是一段说明
   document.getElementById('btn-ai')?.addEventListener('click', () => openAiSettings());
   document.getElementById('btn-save')?.addEventListener('click', () => openSaveFilePanel());
+
+  // 语言切换：切换后整页重载，最省事也最不容易出现「一半中文一半英文」
+  document.getElementById('btn-lang')?.addEventListener('click', () => {
+    setLang(getLang() === 'en' ? 'zh' : 'en');
+    window.location.reload();
+  });
+  applyStaticI18n();
 
   // 点击画面自动走过去（打字游戏里，移动不该占用打字的手）
   cv.addEventListener('click', (e) => {

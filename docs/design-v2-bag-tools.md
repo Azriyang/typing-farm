@@ -2556,3 +2556,101 @@ window.setTimeout(() => window.location.reload(), 700);
 | 导出下载 | 文件名 `typing-farm-save-20261125-1957.json`，blob URL |
 | 完整交互 | 选文件 → 预览进度 → 确认 → 写入 → 重载 → 继续存档读到 12 天/8888G |
 | 无效文件 UI | 面板内提示「这个文件不能用：这不是本游戏的存档文件」 |
+
+## v4.18 双语言支持（第一阶段，已实现）
+
+用户要求「增加双语言支持，增加英语作为母语支持」。
+
+### 先量了规模
+
+全项目中文 27,977 字，分布：
+
+| 文件 | 中文字数 |
+| --- | --- |
+| cet4.ts | 6,783（词库释义） |
+| game.ts | 6,199（UI 文案） |
+| render.ts | 2,569（画到 canvas 上的字） |
+| villagers.ts | 2,330（对白） |
+| 其余 23 个文件 | ~10,000 |
+
+一次性全译不现实，也会把这一轮变成"翻译工程"而看不到可玩结果。所以先做**能让英文玩家看懂并玩下去**的那一层。
+
+### 两种模式的玩法含义不同
+
+| 模式 | 打字时的提示 | 面向谁 |
+| --- | --- | --- |
+| 中文 | 中文词义（`husk` → 「谷壳」） | 边玩边认词 |
+| English | `type it out` | 母语者做键盘练习 |
+
+这不是简单的文字替换——**中文词义对英语母语者是无用信息**，留着反而占地方。所以提示行换成了行为指引。
+
+### 实现：不抽 key，成对写在原位置
+
+```ts
+t('体力', 'Stamina')
+tr('第 {n} 天', 'Day {n}', { n: 3 })
+```
+
+字符串在这个项目里都是就地生成的（模板字符串），抽成 key 文件会让几十处代码变成「key + 查表」两跳，可读性反而更差。成对书写的代价是没法做覆盖率统计，收益是改文案时两种语言就在眼前。
+
+### 名字层用 Proxy，零调用点改动
+
+物品名散落在 `getDef(x).name` 的几十个调用点。为了不改它们：
+
+```ts
+export function getDef(id: string): ItemDef | undefined {
+  const def = REG.get(id);
+  if (!def || !isEn()) return def;
+  return { ...def, name: itemNameEn(id, cropEn) ?? def.name, desc: ... };
+}
+```
+
+`TOOLS` / `ANIMAL_DEFS` / `NODE_DEFS` / `TIERS` 用同样的思路，但它们是导出常量，所以改成「私有原始表 + Proxy 导出」：
+
+```ts
+const TOOLS_RAW: Record<ToolId, ToolDef> = { ... };
+export const TOOLS = new Proxy(TOOLS_RAW, { get(target, prop) { ... } });
+```
+
+Proxy 只拦属性读取，`Object.keys` / `for...of` 行为不变，所以既有代码（包括遍历）都不受影响。
+
+**踩的坑**：把 `TIERS` 的 Proxy 写在 `TIERS_RAW` 声明之前会触发 TDZ——`new Proxy(TIERS_RAW, ...)` 在模块求值时就会读取该变量。必须放在原始表之后。
+
+### 静态 DOM：data-en 属性
+
+`index.html` 里中文留在标签内，英文放 `data-en`，切回中文时从 `data-zh`（首次运行时缓存）还原：
+
+```html
+<div class="brand" data-en="🌾 Typing Farm">🌾 牧场打字物语</div>
+```
+
+比把文案搬进 TS 更好：不打开 JS 也能看到中文原文，改文案不用在两处对照。
+
+### 切换方式：改完重载
+
+`setLang()` 写入 storage 后直接 `location.reload()`。
+
+理由是 canvas 上已经画好的中文、闭包里捕获的字符串、HUD 缓存都无法就地刷新。重载最省事，也不会出现「一半中文一半英文」的中间态。
+
+### 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| English 模式静态界面 | `Typing Farm` / `Bag` / `Save` / `How to play` / `Start a new life` ✓ |
+| HUD | `Spring` / `Day 1` / `Sunny` / `Standard` ✓ |
+| 物品名 | `Turnip Seeds` / `Turnip` / `Tulip` / `Milk` / `Cheese` / `Harvest Feast` / `Gem` ✓ |
+| 工具/等级/节点/动物 | `Hoe` / `Watering Can` / `Copper` / `Mithril` / `Gem Vein` / `Cow` / `Milk` ✓ |
+| 作物访问器 | `Strawberry` / `Strawberry Seeds` ✓ |
+| 中文回归 | 切回后全部恢复：`牧场打字物语` / `萝卜种子` / `春` / `标准` ✓ |
+
+### 还没做的（下一阶段）
+
+| 待译 | 规模 |
+| --- | --- |
+| 背包 / 图鉴 / 商店 / 委托 / 烹饪 等弹窗界面文案 | 约 3,000 字，集中在 game.ts |
+| 玩法说明长文 | 约 1,500 字 |
+| NPC 打招呼与送礼反应 | 约 800 字 |
+| 爷爷的遗物 / 恋爱线 / 委托文案 | 约 1,400 字 |
+| canvas 上的中文（NPC 名牌「看庄稼」等） | 约 300 字 |
+
+对白里**要打的那句本来就是英文**，所以英文玩家现在能完整玩通主循环，只是读不到叙事。

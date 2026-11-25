@@ -6,11 +6,12 @@
    ============================================================ */
 
 import type { CropDef, Season, Weather } from './types';
+import { isEn } from './i18n';
 
 export const SEASON_LEN = 8;
 export const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
 
-export const SEASON_LABEL: Record<Season, string> = {
+export const SEASON_LABEL_ZH: Record<Season, string> = {
   spring: '春',
   summer: '夏',
   autumn: '秋',
@@ -64,7 +65,7 @@ export function weatherWaters(w: Weather): boolean {
   return w === 'rain';
 }
 
-export const WEATHER_LABEL: Record<Weather, string> = {
+export const WEATHER_LABEL_ZH: Record<Weather, string> = {
   sunny: '晴',
   rain: '雨',
   snow: '雪'
@@ -210,3 +211,19 @@ export const PALETTES: Record<Season, Palette> = {
     tint: '160,190,230', tintAlpha: 0.08
   }
 };
+/* ---------------- 本地化标签 ---------------- */
+
+const SEASON_LABEL_EN: Record<Season, string> = {
+  spring: 'Spring', summer: 'Summer', autumn: 'Autumn', winter: 'Winter'
+};
+const WEATHER_LABEL_EN: Record<Weather, string> = {
+  sunny: 'Sunny', rain: 'Rain', snow: 'Snow'
+};
+
+export function seasonLabel(s: Season): string {
+  return isEn() ? SEASON_LABEL_EN[s] : SEASON_LABEL_ZH[s];
+}
+
+export function weatherLabel(w: Weather): string {
+  return isEn() ? WEATHER_LABEL_EN[w] : WEATHER_LABEL_ZH[w];
+}

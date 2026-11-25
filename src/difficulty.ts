@@ -1,3 +1,5 @@
+import { isEn } from './i18n';
+
 /* ============================================================
    difficulty.ts — 全局难度
    ------------------------------------------------------------
@@ -10,9 +12,12 @@ export type DifficultyId = 'easy' | 'normal' | 'hard';
 export interface DifficultyDef {
   id: DifficultyId;
   name: string;
+  /** 英文名（母语英语时用） */
+  nameEn?: string;
   icon: string;
   /** 一句话说明 */
   desc: string;
+  descEn?: string;
   /** 时限倍率（>1 更宽松） */
   timeMult: number;
   /** 容错加成（可负） */
@@ -29,6 +34,8 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
   easy: {
     id: 'easy',
     name: '轻松',
+    nameEn: 'Relaxed',
+    descEn: 'Time +70%, 2 spare mistakes, shorter words, misses do not break combo',
     icon: '🌱',
     desc: '时限 +70%、容错 2 次、词更短、打错不清连击',
     timeMult: 1.7,
@@ -40,6 +47,8 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
   normal: {
     id: 'normal',
     name: '标准',
+    nameEn: 'Standard',
+    descEn: 'The intended pace: normal time limit, tool tier sets tolerance',
     icon: '🌤️',
     desc: '原本的节奏：时限正常、工具等级决定容错',
     timeMult: 1.0,
@@ -51,6 +60,8 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
   hard: {
     id: 'hard',
     name: '挑战',
+    nameEn: 'Challenge',
+    descEn: 'Time -15%, 1 less spare mistake, longer words, timeout drains full stamina',
     icon: '🔥',
     desc: '时限 -15%、容错 -1、词更长、超时扣满',
     timeMult: 0.85,
@@ -82,4 +93,15 @@ export function applyDifficulty(
 /** 难度对词长档位的影响 */
 export function shiftBand(d: DifficultyDef, band: number, max: number): number {
   return Math.max(0, Math.min(max, band + d.bandShift));
+}
+/** 按当前语言取难度名 */
+export function difficultyName(id: DifficultyId): string {
+  const d = DIFFICULTIES[id];
+  return isEn() ? (d.nameEn ?? d.name) : d.name;
+}
+
+/** 按当前语言取难度说明 */
+export function difficultyDesc(id: DifficultyId): string {
+  const d = DIFFICULTIES[id];
+  return isEn() ? (d.descEn ?? d.desc) : d.desc;
 }

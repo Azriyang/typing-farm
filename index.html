@@ -12,47 +12,47 @@
 
   <!-- ===== 顶栏 ===== -->
   <header class="topbar">
-    <div class="brand">🌾 牧场打字物语</div>
-    <div class="stat season"><span class="ico" id="hud-season-ico">🌸</span><b id="hud-season">春</b><span class="sub" id="hud-season-day">第1天</span></div>
-    <div class="stat"><span class="ico">📅</span><b id="hud-day">1</b><span class="sub">天</span></div>
+    <div class="brand" data-en="🌾 Typing Farm">🌾 牧场打字物语</div>
+    <div class="stat season"><span class="ico" id="hud-season-ico">🌸</span><b id="hud-season">春</b><span class="sub" id="hud-season-day" data-en="Day 1">第1天</span></div>
+    <div class="stat"><span class="ico">📅</span><b id="hud-day">1</b><span class="sub" data-en="Day">天</span></div>
     <div class="stat"><span class="ico">🕒</span><b id="hud-clock">06:00</b></div>
-    <div class="stat diff" id="hud-diff" title="点击切换难度"><span class="ico" id="hud-diff-ico">🌤️</span><b id="hud-diff-name">标准</b></div>
+    <div class="stat diff" id="hud-diff" title="点击切换难度" data-en-title="Click to change difficulty"><span class="ico" id="hud-diff-ico">🌤️</span><b id="hud-diff-name">标准</b></div>
     <div class="stat festival hidden" id="hud-festival"><span class="ico" id="hud-festival-ico">🌱</span><b id="hud-festival-name">播种祭</b></div>
     <div class="stat"><span class="ico" id="hud-weather-ico">☀️</span><b id="hud-weather">晴</b></div>
     <div class="stat coin"><span class="ico">🪙</span><b id="hud-coins">0</b></div>
     <div class="spacer"></div>
-    <button class="btn ghost" id="btn-words">📖 词库</button>
-    <button class="btn ghost" id="btn-bag">🎒 背包 <span class="kbd">Tab</span></button>
-    <button class="btn ghost" id="btn-save">💾 存档</button>
+    <button class="btn ghost" id="btn-words" data-en="📖 Words">📖 词库</button>
+    <button class="btn ghost" id="btn-bag">🎒 <span data-en="Bag">背包</span> <span class="kbd">Tab</span></button>
+    <button class="btn ghost" id="btn-save" data-en="💾 Save">💾 存档</button>
     <button class="btn ghost" id="btn-ai">🤖 AI</button>
-      <button class="btn ghost" id="btn-help">❓ 玩法</button>
-    <button class="btn icon" id="btn-sound" title="音效开关">🔊</button>
+      <button class="btn ghost" id="btn-help" data-en="❓ How to play">❓ 玩法</button>
+    <button class="btn ghost" id="btn-lang" title="Language / 语言">EN</button>`n    <button class="btn icon" id="btn-sound" title="音效开关" data-en-title="Sound on/off">🔊</button>
   </header>
 
   <!-- ===== 画面 ===== -->
   <div class="stage">
     <canvas id="cv" width="960" height="600"></canvas>
     <div class="toast" id="toast"></div>
-    <div class="hint" id="hint">WASD / 方向键 移动 · 空格 使用手持物 · Tab 背包</div>
+    <div class="hint" id="hint" data-en="WASD / Arrows to move · Space to use tool · Tab for bag">WASD / 方向键 移动 · 空格 使用手持物 · Tab 背包</div>
   </div>
 
   <!-- ===== 底栏 ===== -->
   <div class="dock">
     <div class="dock-left">
       <div class="gauge">
-        <div class="gauge-label">体力 <span id="hud-stamina">100</span></div>
+        <div class="gauge-label"><span data-en="Stamina">体力</span> <span id="hud-stamina">100</span></div>
         <div class="gauge-track"><div class="gauge-fill" id="gauge-stamina"></div></div>
       </div>
       <div class="row-stats">
         <span>🎒 <b id="hud-bag">0/16</b></span>
-        <span>📦 今日 <b id="hud-today">0</b></span>
+        <span>📦 <span data-en="Today">今日</span> <b id="hud-today">0</b></span>
       </div>
     </div>
 
     <div class="dock-main">
       <div class="typing-card idle" id="typing-card">
         <div class="t-head">
-          <span id="t-action">走近田地，按空格开始劳作</span>
+          <span id="t-action" data-en="Walk up to a field and press Space">走近田地，按空格开始劳作</span>
           <span class="t-combo" id="t-combo"></span>
         </div>
         <div class="t-body">
@@ -65,7 +65,7 @@
     </div>
 
     <div class="dock-right">
-      <div class="hb-title">快捷栏 <span class="tip">1~8 选择 · Q 循环</span></div>
+      <div class="hb-title"><span data-en="Hotbar">快捷栏</span> <span class="tip" data-en="1~8 select · Q cycle">1~8 选择 · Q 循环</span></div>
       <div class="hotbar" id="hotbar"></div>
     </div>
   </div>
@@ -84,26 +84,26 @@
 <div class="title-screen" id="title-screen">
   <div class="title-inner">
     <div class="title-deco">🌾 🐄 🥕</div>
-    <h1>牧场打字物语</h1>
+    <h1 data-en="Typing Farm">牧场打字物语</h1>
     <p class="title-sub">TYPING FARM</p>
-    <p class="title-desc">
+    <p class="title-desc" data-en="Grandpa left you an overgrown farm.<br>Here every chore is done by typing &mdash; <code>water</code> to water, <code>hoe</code> to till, <code>harvest</code> to gather.">
       爷爷留下了一片荒芜的农场。<br>
       在这里，每一种农活都要用打字来完成 —— <code>water</code> 浇水、<code>hoe</code> 开垦、<code>harvest</code> 收获。
     </p>
 
     <div class="diff-pick" id="diff-pick">
-      <div class="diff-pick-title">选择难度（用于新游戏；继续存档会沿用存档里的难度）</div>
+      <div class="diff-pick-title" data-en="Difficulty (applies to a new game; continuing uses the saved one)">选择难度（用于新游戏；继续存档会沿用存档里的难度）</div>
       <div class="diff-cards" id="diff-cards"></div>
       <div class="diff-desc" id="diff-desc">时限正常，工具等级决定容错</div>
     </div>
 
     <div class="title-actions">
-      <button class="btn big" id="btn-new">开始新生活</button>
-      <button class="btn big ghost hidden" id="btn-continue">继续存档</button>
+      <button class="btn big" id="btn-new" data-en="Start a new life">开始新生活</button>
+      <button class="btn big ghost hidden" id="btn-continue" data-en="Continue">继续存档</button>
     </div>
     <p class="title-tip">
-      WASD / 方向键移动 · 空格交互 · 1~8 快捷栏 · Tab 背包<br>
-      请把输入法切到英文
+      <span data-en="WASD / arrows to move &middot; Space to interact &middot; 1~8 hotbar &middot; Tab bag">WASD / 方向键移动 · 空格交互 · 1~8 快捷栏 · Tab 背包</span><br>
+      <span data-en="Switch your keyboard to English before typing">请把输入法切到英文</span>
     </p>
   </div>
 </div>

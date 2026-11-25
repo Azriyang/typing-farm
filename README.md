@@ -50,6 +50,31 @@ pnpm electron       # 启动桌面版
 端到端自检：`electron scripts/electron-smoke.cjs` → 输出 `SMOKE_PASS` 表示 preload 注入、IPC、文件落盘、key 不外泄全部正常。
 ---
 
+## 打包发给别人（Windows 便携版）
+
+```bash
+pnpm build          # 构建游戏
+pnpm package        # 生成 release/TypingFarm-win32-x64.zip
+```
+
+产物：
+
+| 路径 | 说明 |
+| --- | --- |
+| `release/TypingFarm-win32-x64/` | 解压即玩的文件夹 |
+| `release/TypingFarm-win32-x64.zip` | **发给别人用这个**（约 100 MB） |
+
+对方解压后双击 `TypingFarm.exe`，不用安装。
+
+> 这不是安装器，是把 Electron 运行时和打包好的游戏拼在一起：
+> `resources/app/` 里放 `package.json` + `electron/*.cjs` + `dist/`，
+> Electron 会自动从这里加载应用。语言包只保留中文和英文，省十几 MB。
+
+**先确认一件事**：游戏是 ES module，而浏览器不允许 `file://` 打开 module 脚本。
+Electron 里可以（实测 `window.__farm` 有值、标题页难度卡渲染出 3 个），
+所以不需要自定义 `app://` 协议。
+---
+
 ## 快速开始
 
 ```bash

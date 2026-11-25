@@ -4,3 +4,6 @@ dist/
 *.local
 .DS_Store
 Thumbs.db
+
+# 打包产物（用 pnpm package 生成，不进仓库）
+release/

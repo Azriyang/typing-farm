@@ -4,6 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "description": "牧场打字物语 — 打字 × 牧场经营",
+  "license": "AGPL-3.0-or-later",
+  "author": "Azriyang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Azriyang/typing-farm.git"
+  },
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",

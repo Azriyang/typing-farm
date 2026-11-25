@@ -2312,3 +2312,129 @@ DevTools 里 `requestAnimationFrame` 被节流，动画很慢，但**采样两�
 | 井绳与吊桶 | 4/4 采样点变化（111,78,48 → 126,89,56）✓ |
 
 验证有个前提：**必须等相机稳定**。第一次测的时候相机还在插值，两帧采到的是不同位置，全是假阳性。
+
+## v4.16 Electron 桌面壳 + LLM 受控对话（已实现）
+
+用户选定架构：**走 Electron 主进程**。
+
+### 三条硬约束决定了架构
+
+| 约束 | 后果 |
+| --- | --- |
+| 纯前端不能持 key | key 只能存在主进程，渲染进程拿不到 |
+| 这是打字游戏，不能变成聊天室 | 不给自由对话，只给**受控造句任务** |
+| 教育价值建立在可控词表上 | 生成的句子必须用上玩家正在复习的词 |
+
+所以最终形态不是"NPC 会聊天了"，而是：**NPC 用玩家该复习的词，说自己角色的话。**
+
+### 进程分工
+
+```
+渲染进程（游戏）        只发「约束」，收「台词」
+      │  contextBridge（白名单）
+preload.cjs             暴露 storage / llm 两组接口
+      │  IPC
+主进程（ipc.cjs）       持有 apiKey、发 HTTP、写存档文件
+```
+
+`llm:getConfig` 返回的是 `publicConfig()`——**刻意不含 apiKey**，只有 `hasKey: boolean`。冒烟测试专门断言了这一点（`cfgLeaksKey === false`）。
+
+### 受控生成的提示词
+
+给模型的是角色卡 + 词汇约束 + 输出格式，三段都不给自由：
+
+```
+角色：阿茂（老农）
+说话风格：短句，几乎不用形容词，爱说天气、土、时辰、收成
+口头禅：地不会骗人
+此刻正在：锄自己的小菜地
+季节：春
+和玩家的熟悉程度：3/5 心
+
+必须用上下面这些词中的至少 2 个（原样出现，不要变形、不要加 ed/ing/s）：
+loam, reap, husk
+
+只输出 JSON。
+```
+
+系统提示固定要求：全小写、8~12 个词、不要标点、输出 `{"en","zh"}`。
+
+**声纹不是形容词堆砌**，是具体到可执行的描述：老周那条写完就是"一次不超过六个字"——模型照着做，出来的台词就不会变成话痨。
+
+### 三道校验，不合格就丢弃
+
+生成结果要过三关，任何一关不过就**静默退回预置台词**（不报错、不打扰玩家）：
+
+1. **能解析**：容忍代码块和前后废话，抠出第一个 `{...}`
+2. **词数合规**：4~12 个词
+3. **真的用上了约束词**：至少 2 个原样出现
+
+第 3 条是关键的防退化设计——**如果模型没用上学习词，这次生成对教育目标就是无效的**，宁可不要。
+
+### 预生成 + 缓存（不现场等网络）
+
+一次生成 1~2 秒，聊天时现场等会打断节奏。所以：
+
+| 时机 | 动作 |
+| --- | --- |
+| 开局 / 换天 | 后台串行（并发 1）为所有在场村民各生成 1 句 |
+| 玩家聊天 | **同步**从缓存取，取不到就用预置台词 |
+| 跨天 | 缓存 key 带 `day`，前一天自动作废 |
+| 存储 | 持久化到 `typing-farm-ai-lines-v1`，上限 60 条，按 day 裁旧 |
+
+串行是刻意的：一次打十几个并发请求既慢又容易触发限流。
+
+### 存档变成了真文件
+
+原来浏览器用 localStorage。现在 `platform.ts` 的 `DesktopFileAdapter` 会走 IPC 落到
+`%APPDATA%/typing-farm/saves/<key>.json`。
+
+写入用**先写 `.tmp` 再 rename** 的原子替换——Steam 云同步和崩溃安全都靠这个。
+
+### 设置界面
+
+顶栏新增 🤖 按钮。浏览器版点开只有一段说明；桌面版是完整表单（启用开关、API 地址、模型、Key），带「保存」和「测试」两个动作。
+
+Key 输入框留空表示"不修改"，避免每次保存都要重填。
+
+### 端到端冒烟测试
+
+`scripts/electron-smoke.cjs` 用隐藏窗口加载真实 `dist/index.html`，然后在页面里执行断言：
+
+```
+SMOKE_RESULT {
+  bridge: true, storage: true, llm: true,
+  gameCanvas: true, titleScreen: true,
+  readBack: "value-ok", afterRemove: null,
+  availableBefore: false, availableAfter: true,
+  cfgLeaksKey: false
+}
+configOnDisk: { enabled: true, model: "test-model", apiKey: "sk-test-123", ... }
+SMOKE_PASS
+```
+
+这是唯一能证明"preload 注入 + IPC + 文件落盘 + key 不外泄"四件事同时成立的方式——靠点界面是测不出来的。
+
+### 两个环境坑
+
+**1. `ELECTRON_RUN_AS_NODE=1`**
+
+这台机器的环境变量里带着它，导致 `electron.exe .` 退化成纯 Node，`require('electron')` 返回的是路径字符串而不是运行时模块，`ipcMain` 就是 undefined。启动前必须 `Remove-Item Env:ELECTRON_RUN_AS_NODE`。
+
+**2. pnpm 拦住了 electron 的二进制下载**
+
+`onlyBuiltDependencies` 不含 electron，`node_modules/electron/dist` 一直是空的。
+而且 pnpm 有个坑：`package.json` 里的 `pnpm` 字段**已经不再被读取**，要写在 `pnpm-workspace.yaml`。
+
+最后用本机已有的 `electron-v33.2.1-win32-x64.zip` 缓存，把版本钉到 33.2.1 并手动跑 `node install.js` 才装上。
+
+### AI 是可选增强，不是必需品
+
+| 情况 | 行为 |
+| --- | --- |
+| 浏览器版 | 全部使用预置台词 |
+| 桌面版未配 key | 同上，🤖 面板提示去配置 |
+| 配了 key 但请求失败 / 超时 / 校验不过 | 这一句退回预置台词，下一句继续尝试 |
+| 关掉开关 | 立刻回到预置台词，缓存清空 |
+
+**任何时候游戏都完整可玩。** 这决定了它不会变成"必须联网才能玩"的负资产。

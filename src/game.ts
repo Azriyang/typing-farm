@@ -25,8 +25,14 @@ import {
 } from './difficulty';
 import type { DifficultyId } from './difficulty';
 import {
-  markCorrect, markWrong, startDay as startLearnDay, stats as learnStats
+  markCorrect, markWrong, startDay as startLearnDay, stats as learnStats,
+  reviewCandidates, learningBacklog
 } from './learning';
+import {
+  aiSupported, aiReady, takeCachedLine, prefetchLines, getAiConfig, setAiConfig,
+  clearAiCache
+} from './llm';
+import type { VillagerBrief } from './llm';
 import {
   CRAFT_RECIPES, recipeById, absoluteMinutes, outName, inputText, remainingText
 } from './craft';
@@ -61,7 +67,8 @@ import { getDef, pickFish, sellPrice, isSellable } from './items';
 import type { FishDef } from './items';
 import {
   makeWord, makeWords, bandForValue, getCustomSets, upsertCustom, removeCustom,
-  toggleCustom, normalizeEntries, totalWords, isCet4Enabled, setCet4Enabled, cet4Count, CATEGORY_LABEL, BANDS, bandStats, distribution, difficulty
+  toggleCustom, normalizeEntries, totalWords, isCet4Enabled, setCet4Enabled, cet4Count, CATEGORY_LABEL, BANDS, bandStats, distribution, difficulty,
+  pickWord
 } from './words';
 import type { WordCategory, CustomSet } from './words';
 import type {
@@ -1861,6 +1868,149 @@ function finishRomance(v: Villager, mode: 'event' | 'confess'): void {
   save();
 }
 
+/* ---------------- AI 对话：预生成 ---------------- */
+
+/** 给某个村民的提示词角色卡 */
+function aiBriefOf(v: Villager): VillagerBrief | null {
+  const def = VILLAGER_DEFS[v.id];
+  if (!def) return null;
+  return {
+    id: def.id,
+    name: def.name,
+    role: def.role,
+    voice: def.voice,
+    catchphrase: def.catchphrase,
+    doing: v.doing,
+    season: SEASON_LABEL[seasonOfDay(state.day)],
+    hearts: hearts(v.friendship)
+  };
+}
+
+/** 这个村民这句台词要带上哪几个词：优先「该复习的」，不够就补新词 */
+function aiWordsFor(): string[] {
+  const out = reviewCandidates(3);
+  const seen = new Set(out);
+  let guard = 0;
+  while (out.length < 3 && guard++ < 24) {
+    const band = Math.floor(Math.random() * 4) + 1;
+    const w = pickWord('farm', band);
+    if (!w || seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out;
+}
+
+let aiPrefetching = false;
+
+/**
+ * 后台预生成：进镇 / 换天时跑一遍。
+ * 串行、失败静默——AI 不可用时游戏照常跑，用预置台词。
+ */
+function scheduleAiPrefetch(): void {
+  if (!aiReady() || aiPrefetching) return;
+  aiPrefetching = true;
+  const briefs: VillagerBrief[] = [];
+  for (const v of state.villagers) {
+    const b = aiBriefOf(v);
+    if (b) briefs.push(b);
+  }
+  const day = state.day;
+  // 放到下一个宏任务，不阻塞开场景
+  window.setTimeout(() => {
+    prefetchLines(briefs, () => aiWordsFor(), day)
+      .catch(() => 0)
+      .finally(() => { aiPrefetching = false; });
+  }, 600);
+}
+
+/* ---------------- AI 对话：设置面板 ---------------- */
+
+function openAiSettings(): void {
+  const supported = aiSupported();
+  if (!supported) {
+    UI.showModal(
+      '🤖 AI 对话',
+      `<p class="dim">AI 自由生成对话只在<b>桌面版</b>可用——API key 存在主进程里，浏览器版拿不到。</p>
+       <p class="dim">用 <code>pnpm electron</code> 启动桌面版后，这里会出现配置项。</p>`,
+      [{ label: '知道了', cls: 'ghost', onClick: () => UI.hideModal() }]
+    );
+    return;
+  }
+
+  UI.showModal(
+    '🤖 AI 对话',
+    `<p class="dim">开启后，村民会按自己的身份和当天该复习的单词，现场组织一句台词。
+     关掉就用预置台词，两种都能玩。</p>
+     <div class="ai-form">
+       <label class="ai-row"><span class="k">启用</span>
+         <input type="checkbox" id="ai-enabled" ${aiReady() ? 'checked' : ''}></label>
+       <label class="ai-row"><span class="k">API 地址</span>
+         <input type="text" id="ai-base" placeholder="https://api.deepseek.com/v1/chat/completions"></label>
+       <label class="ai-row"><span class="k">模型</span>
+         <input type="text" id="ai-model" placeholder="deepseek-chat"></label>
+       <label class="ai-row"><span class="k">API Key</span>
+         <input type="password" id="ai-key" placeholder="留空则不修改"></label>
+     </div>
+     <p class="dim cov-note" id="ai-status">正在读取配置…</p>`,
+    [
+      { label: '保存', cls: 'green', onClick: () => { void saveAiSettings(); } },
+      { label: '测试', cls: '', onClick: () => { void testAi(); } },
+      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+
+  void getAiConfig().then((cfg) => {
+    if (!cfg) return;
+    const base = document.getElementById('ai-base') as HTMLInputElement | null;
+    const model = document.getElementById('ai-model') as HTMLInputElement | null;
+    const status = document.getElementById('ai-status');
+    if (base) base.value = cfg.baseUrl;
+    if (model) model.value = cfg.model;
+    if (status) {
+      const backlog = learningBacklog();
+      status.textContent = cfg.hasKey
+        ? `已配置 Key · 模型 ${cfg.model} · 待复习词 ${backlog} 个`
+        : `还没配置 Key · 待复习词 ${backlog} 个`;
+    }
+  });
+}
+
+async function saveAiSettings(): Promise<void> {
+  const enabled = (document.getElementById('ai-enabled') as HTMLInputElement | null)?.checked ?? false;
+  const baseUrl = (document.getElementById('ai-base') as HTMLInputElement | null)?.value.trim();
+  const model = (document.getElementById('ai-model') as HTMLInputElement | null)?.value.trim();
+  const keyRaw = (document.getElementById('ai-key') as HTMLInputElement | null)?.value ?? '';
+
+  const patch: Parameters<typeof setAiConfig>[0] = { enabled };
+  if (baseUrl) patch.baseUrl = baseUrl;
+  if (model) patch.model = model;
+  // 只有真的输入了才覆盖 key；留空表示"不改"
+  if (keyRaw.trim()) patch.apiKey = keyRaw.trim();
+
+  const cfg = await setAiConfig(patch);
+  if (!cfg) { UI.toast('保存失败', 'bad'); return; }
+  clearAiCache();
+  UI.toast(cfg.enabled && cfg.hasKey ? 'AI 对话已开启' : '已保存', 'good');
+  UI.hideModal();
+  if (cfg.enabled && cfg.hasKey) scheduleAiPrefetch();
+}
+
+async function testAi(): Promise<void> {
+  const status = document.getElementById('ai-status');
+  if (status) status.textContent = '正在测试…（最长 12 秒）';
+  const line = await prefetchLines(
+    [{ id: '__probe__', name: '测试', role: '路人', voice: '普通', season: '春', hearts: 1 }],
+    () => ['water', 'field'],
+    state.day
+  );
+  if (status) {
+    status.textContent = line > 0
+      ? '连接成功，已生成一条测试台词。'
+      : '没拿到有效结果——检查地址、模型名和 Key。';
+  }
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -2310,7 +2460,11 @@ function openVillagerPanel(v: Villager, reaction?: string): void {
 function startChat(v: Villager): void {
   if (session.active) return;
   const def = VILLAGER_DEFS[v.id];
+  // 优先用后台预生成好的 AI 台词；没有就退回预置台词（AI 不可用时永远走这条）
   const phrase = pickChatPhrase(def, state.day);
+  const aiLine = takeCachedLine(v.id, state.day);
+  const finalPhrase = aiLine ?? phrase;
+  const isAi = !!aiLine;
   const cost = { stamina: 1, time: 10 };
   if (state.stamina < cost.stamina) {
     UI.toast('太累了，先歇歇吧', 'bad');
@@ -2321,9 +2475,9 @@ function startChat(v: Villager): void {
     kind: 'chat', tool: null, plots: [], nodeKey: null,
     villagerId: v.id, stamina: cost.stamina, time: cost.time, label: `和 ${def.name} 聊天`
   };
-  currentLabel = `和 ${def.name} 聊天`;
+  currentLabel = isAi ? `和 ${def.name} 聊天 · AI` : `和 ${def.name} 聊天`;
   UI.resetTypingCache();
-  const word: Word = { text: phrase.en, zh: phrase.zh, diff: difficulty(phrase.en) };
+  const word: Word = { text: finalPhrase.en, zh: finalPhrase.zh, diff: difficulty(finalPhrase.en) };
   const dp = typingParams(0, 1);
   session.start([word], dp.tolerance, dp.timeMult, performance.now());
 }
@@ -3241,6 +3395,9 @@ function sleep(fainted = false): void {
   startLearnDay(state.day);
   // 每天刷新委托（过期的撤下，补足到 2~3 条）
   state.requests = rollRequests(state.requests ?? [], state.day);
+  // 新的一天：昨天的台词作废，后台重新生成
+  scheduleAiPrefetch();
+
   // 有遗物刚好到了解锁日？提示一下
   const newRelic = newlyUnlocked(state.day, state.relics ?? []);
   if (newRelic) {
@@ -3637,6 +3794,7 @@ function startGame(fresh: boolean): void {
   }
   restoreScene();
   running = true;
+  scheduleAiPrefetch();
   UI.hideHint();
   document.getElementById('title-screen')?.classList.add('hidden');
   Sound.init();
@@ -3814,6 +3972,9 @@ export function boot(): void {
 
   state = newState();
   UI.bindModalMask();
+
+  // AI 设置：只有桌面版才有意义，浏览器版点开是一段说明
+  document.getElementById('btn-ai')?.addEventListener('click', () => openAiSettings());
 
   // 点击画面自动走过去（打字游戏里，移动不该占用打字的手）
   cv.addEventListener('click', (e) => {

@@ -1085,3 +1085,35 @@ html, body {
   from { opacity: 0; transform: scale(1.015); }
   to   { opacity: 1; transform: scale(1); }
 }
+/* ---- AI 对话设置 ---- */
+.ai-form { display: flex; flex-direction: column; gap: 7px; margin: 8px 0; }
+.ai-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.ai-row .k {
+  width: 74px;
+  flex: none;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.ai-row input[type="text"],
+.ai-row input[type="password"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: #4a3320;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 7px;
+}
+.ai-row input[type="text"]:focus,
+.ai-row input[type="password"]:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+.ai-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #7a9a4e; }

@@ -124,6 +124,10 @@ export interface VillagerDef {
   birthdayLine: string;
   /** 生日当天聊天要打的英文 */
   birthdayPhrase: DialoguePhrase;
+  /** 说话风格（给 LLM 生成对话时的声纹描述） */
+  voice: string;
+  /** 口头禅 */
+  catchphrase?: string;
 }
 
 export const VILLAGER_DEFS: Record<string, VillagerDef> = {
@@ -134,6 +138,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 5,
     birthdayLine: '生日？……我自个儿都忘了。你有心了。',
     birthdayPhrase: { en: 'you remembered my birthday', zh: '你记得我的生日' },
+    voice: '短句，几乎不用形容词，爱说天气、土、时辰、收成', catchphrase: '地不会骗人',
     reactions: {
       like: ['哈哈，好庄稼人就该懂这些！', '嗯，这东西实在，我喜欢。', '到底是土地里出来的，好啊！'],
       neutral: ['哦，谢谢你了。', '嗯，收下了。'],
@@ -160,6 +165,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 13,
     birthdayLine: '哈，你还记得！晚上我请你吃鱼。',
     birthdayPhrase: { en: 'thanks for remembering me', zh: '谢谢你记得我' },
+    voice: '语气词多，爽朗爱开玩笑，三句不离水和鱼',
     reactions: {
       like: ['哈！你懂我！', '这可是好东西，谢啦！', '水里来的，我最爱！'],
       neutral: ['谢了，朋友。', '嗯，我收下了。'],
@@ -185,6 +191,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 21,
     birthdayLine: '记得我生日的人不多。这份心意我收下了。',
     birthdayPhrase: { en: 'few people remember my birthday', zh: '记得我生日的人不多' },
+    voice: '商人式的客气与克制，爱说行情、货、价钱，偶尔自嘲',
     reactions: {
       like: ['哎呀，这正是我需要的，多谢！', '好货！你真是我的贵人。', '这个我收得开心！'],
       neutral: ['谢谢惠顾，我收下了。', '嗯，不错的心意。'],
@@ -209,6 +216,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 29,
     birthdayLine: '你记得呀！我今天特别开心～',
     birthdayPhrase: { en: 'you know it is my birthday', zh: '你知道今天是我生日' },
+    voice: '活泼，感叹句多，爱说花、颜色、光，说话带一点撒娇',
     reactions: {
       like: ['哇，我好喜欢！谢谢你！', '你怎么知道我想要这个～', '好开心呀！'],
       neutral: ['谢谢你的礼物。', '嗯，我会好好收着的。'],
@@ -241,6 +249,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 3,
     birthdayLine: '哟，还知道我今天生日？快坐下，我请你一杯。',
     birthdayPhrase: { en: 'you came to my birthday', zh: '你来给我过生日' },
+    voice: '爽快直白，三句不离吃喝，爱说累但撑着，会自嘲', catchphrase: '一顿热饭能解决大部分事',
     reactions: {
       like: ['这东西经我的手，能变成好菜！', '哎呀，你懂我口味。', '收下了，回头给你留个座。'],
       neutral: ['谢啦，我拿去切切看。', '嗯，有用的东西。'],
@@ -266,6 +275,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 11,
     birthdayLine: '……今天？唔。反正炉子不能停。',
     birthdayPhrase: { en: 'you know my birthday', zh: '你知道我的生日' },
+    voice: '话极少，一次不超过六个字，只给指令和结论，不寒暄', catchphrase: '东西放那儿。烫。',
     reactions: {
       like: ['好料。能用。', '嗯，这个我熔得动。', '……谢了。'],
       neutral: ['放着吧。', '哦。'],
@@ -290,6 +300,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 19,
     birthdayLine: '哎呀，被病人记住生日，这可真是……谢谢。',
     birthdayPhrase: { en: 'i did not expect this', zh: '我没想到会这样' },
+    voice: '温和的唠叨，爱劝人休息吃饭，用问句关心人',
     reactions: {
       like: ['这个对身体好，我收下了。', '谢谢，我会用在诊室里。', '你很有心，记得自己也吃点好的。'],
       neutral: ['谢谢。放这儿吧。', '嗯，我记下了。'],
@@ -314,6 +325,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 7,
     birthdayLine: '你居然记得！大人都不记得！',
     birthdayPhrase: { en: 'nobody else remembered', zh: '别人都不记得' },
+    voice: '小孩口吻，感叹号多，问题多，注意力跳来跳去',
     reactions: {
       like: ['哇啊啊！给我的吗！', '我要拿给阿晴看！', '好好好，你最好了！'],
       neutral: ['哦…谢谢。', '嗯，我收着。'],
@@ -339,6 +351,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 23,
     birthdayLine: '教了一辈子书，倒很少被人记住生日。多谢。',
     birthdayPhrase: { en: 'a teacher is rarely remembered', zh: '老师很少被记得' },
+    voice: '爱讲道理和格言，句子偏长，常提到字和书', catchphrase: '词语也是种子',
     reactions: {
       like: ['好东西。知识之树结的果。', '这个我收下，用来讲课正好。', '你有心，胜过许多学生。'],
       neutral: ['嗯，收下了。', '多谢。'],
@@ -363,6 +376,7 @@ export const VILLAGER_DEFS: Record<string, VillagerDef> = {
     birthday: 31,
     birthdayLine: '生日？在路上的人不太过这个。不过……谢谢。',
     birthdayPhrase: { en: 'i stopped counting long ago', zh: '我早就不数了' },
+    voice: '疏离、观察者的口吻，常提光、颜色、别处的镇子，淡淡的怅惘',
     reactions: {
       like: ['这个颜色我喜欢。', '好，收进我的行囊。', '谢谢，我会画下它。'],
       neutral: ['谢了，路上能用到。', '嗯，收下了。'],

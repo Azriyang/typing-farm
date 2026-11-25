@@ -163,6 +163,31 @@ export function priorityOf(word: string): number {
   return 1 + p.days * 0.5;       // 学得越少越优先
 }
 
+/**
+ * 取出「正在学、但还没掌握」的词，按该复习的紧急程度排序。
+ * 用途：给 LLM 生成对话时做词汇约束——让她说的话就包含这些词，
+ * 这样自由生成的台词仍然落在玩家的学习闭环里。
+ */
+export function reviewCandidates(limit: number): string[] {
+  const rows: Array<{ word: string; score: number }> = [];
+  for (const [word, p] of Object.entries(progress)) {
+    if (p.days >= MASTER_DAYS) continue;   // 已掌握的不再强推
+    // 错误越多、学得越浅、隔得越久 → 越该复习
+    const stale = Math.max(0, todayDay - (p.lastDay || 0));
+    const score = p.errors * 2.2 + (MASTER_DAYS - p.days) * 1.5 + Math.min(stale, 6) * 0.5;
+    rows.push({ word, score });
+  }
+  rows.sort((a, b) => b.score - a.score);
+  return rows.slice(0, Math.max(0, limit)).map((r) => r.word);
+}
+
+/** 还没掌握的词共有多少（用于设置界面显示） */
+export function learningBacklog(): number {
+  let n = 0;
+  for (const p of Object.values(progress)) if (p.days < MASTER_DAYS) n++;
+  return n;
+}
+
 export function resetAll(): void {
   progress = {};
   todayNew = 0;

@@ -35,7 +35,9 @@ export const T = {
   /** 矿洞地面 */
   MINE_FLOOR: 13,
   /** 梯子（上下楼） */
-  LADDER: 14
+  LADDER: 14,
+  /** 茂密的边界灌木带：连续实体，不是一丛丛的树 */
+  HEDGE: 15
 } as const;
 
 export type TileId = (typeof T)[keyof typeof T];
@@ -471,35 +473,33 @@ function buildFarmTerrain(): void {
     return n / 4294967296;
   };
 
-  // 外圈树墙：最外一圈封闭，第二圈用噪声散开（不再像栅栏）
+  // 外圈树墙：**两圈全部填满**。
+  // 之前第二圈用噪声散开（约 58%），结果看起来是一丛丛带缝的灌木，
+  // 一眼就能看到缝。边界要"茂密到一看就走不过去"，所以不留洞。
   for (let x = 0; x < MAP_W; x++) {
-    set(x, 0, T.TREE);
-    set(x, MAP_H - 1, T.TREE);
+    set(x, 0, T.HEDGE);
+    set(x, 1, T.HEDGE);
+    set(x, MAP_H - 1, T.HEDGE);
+    set(x, MAP_H - 2, T.HEDGE);
   }
   for (let y = 0; y < MAP_H; y++) {
-    set(0, y, T.TREE);
-    set(MAP_W - 1, y, T.TREE);
+    set(0, y, T.HEDGE);
+    set(1, y, T.HEDGE);
+    set(MAP_W - 1, y, T.HEDGE);
+    set(MAP_W - 2, y, T.HEDGE);
   }
-  for (let x = 1; x < MAP_W - 1; x++) {
-    if (noise(x, 1) > 0.42) set(x, 1, T.TREE);
-    if (noise(x, MAP_H - 2) > 0.42) set(x, MAP_H - 2, T.TREE);
-  }
-  for (let y = 1; y < MAP_H - 1; y++) {
-    if (noise(1, y) > 0.42) set(1, y, T.TREE);
-    if (noise(MAP_W - 2, y) > 0.42) set(MAP_W - 2, y, T.TREE);
-  }
-  // 零散的树（农场外围成林，小镇区域不放）
+  // 零散的树（农场外围）：密度压到很低，只当点缀，避免看起来像"有洞"
   for (let y = 2; y < MAP_H - 2; y++) {
     for (let x = 2; x < MAP_W - 2; x++) {
       if (x >= TOWN_X - 2) continue;             // 小镇区域留空
-      if (noise(x * 3, y * 5) > 0.93) set(x, y, T.TREE);
+      if (noise(x * 3, y * 5) > 0.975) set(x, y, T.TREE);
     }
   }
 
-  // 农场与小镇的分界树篱：只留主街一个口
+  // 农场与小镇的分界树篱：只留主街一个口，其余**全部填满**
   for (let y = 2; y < MAP_H - 1; y++) {
     if (y === 7 || y === 8) continue;
-    if (noise(31, y) > 0.18) set(32, y, T.TREE);
+    set(32, y, T.HEDGE);
   }
 
   // 池塘
@@ -549,10 +549,13 @@ function buildFarmTerrain(): void {
     if (tileAt(TOWN_ALLEY.x, y) === T.GRASS) set(TOWN_ALLEY.x, y, T.PATH);
   }
 
-  // 东侧树林：镇子的自然东边界
+  // 东侧树林：镇子的自然东边界，填满（留一道稀疏的内缘做过渡）
   for (let y = TOWN_FOREST.y; y < TOWN_FOREST.y + TOWN_FOREST.h; y++) {
     for (let x = TOWN_FOREST.x; x < TOWN_FOREST.x + TOWN_FOREST.w; x++) {
-      if (noise(x * 7, y * 11) > 0.22) set(x, y, T.TREE);
+      // 最内侧一列用噪声留点缺口，看起来像林子边缘而不是一堵墙
+      const inner = x === TOWN_FOREST.x;
+      if (inner && noise(x * 7, y * 11) < 0.35) continue;
+      set(x, y, T.TREE);
     }
   }
 
@@ -580,6 +583,7 @@ const BLOCKED: Record<number, boolean> = {
   [T.ROOF]: true,
   [T.DOOR]: true,
   [T.TREE]: true,
+  [T.HEDGE]: true,
   [T.WALL_IN]: true,
   [T.MINE_WALL]: true,
   [T.LADDER]: true

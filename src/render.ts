@@ -269,6 +269,13 @@ function drawTile(c: Ctx, tx: number, ty: number, t: number) {
       drawThicket(c, x + TILE / 2, y + TILE - 6, tx * 31 + ty * 7, 0.92 + r * 0.16);
       break;
     }
+    case T.HEDGE: {
+      // 边界灌木带：铺满整格，不留缝
+      c.fillStyle = pal.grass;
+      c.fillRect(x, y, TILE, TILE);
+      drawHedge(c, x, y, tx * 131 + ty * 17);
+      break;
+    }
     /* ---------------- 室内 ---------------- */
     case T.FLOOR: {
       // 木地板：横向长板 + 板缝
@@ -905,6 +912,61 @@ function drawFurniture(c: Ctx, scene: string) {
   }
 }
 
+
+/**
+ * 边界灌木带（T.HEDGE）：**先铺满，再叠质感**。
+ *
+ * 之前把每格画成一团灌木，团与团之间天然有起伏缝隙，看起来是"一丛丛"。
+ * 这里改成两段式：
+ *   1. 先用最深的叶色把整格**全部铺满**，连成一条带子 —— 物理上不可能有洞
+ *   2. 再在上面叠三团带明暗的叶簇，只负责表面质感
+ * 所以无论从哪个角度看，都是一道钻不过去的墙。
+ */
+function drawHedge(c: Ctx, x: number, y: number, seed: number) {
+  const base = y + TILE - 6;
+  const R = 24;
+
+  // ① 实底：整格铺满；上沿做成一串小凸起，避免一刀切
+  const topEdge = base - (30 + hash(seed, 3) * 12);
+  c.fillStyle = pal.foliage[0];
+  c.beginPath();
+  c.moveTo(x - 2, base + 2);
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const px = x - 2 + t * (TILE + 4);
+    const bump = Math.sin(t * Math.PI * 3.3 + hash(seed, 7) * 6) * 3.2;
+    c.lineTo(px, topEdge - bump + hash(seed + i * 13, i * 7) * 4);
+  }
+  c.lineTo(x + TILE + 2, base + 2);
+  c.closePath();
+  c.fill();
+
+  // ② 质感：三团带明暗的叶簇
+  const draw = (dx: number, dy: number, r: number, s: number) => {
+    canopy(
+      c, x + TILE / 2 + dx, base - dy, r, s,
+      pal.foliageLine, pal.foliage[0], pal.foliage[1], pal.foliage[2]
+    );
+  };
+  draw(-13, 12, R * 0.8, seed + 37);
+  draw(13, 10, R * 0.78, seed + 79);
+  draw(0, 24 + hash(seed, 11) * 6, R * 0.86, seed + 113);
+
+  // ③ 底部暗带：把根部和地面接住
+  c.fillStyle = 'rgba(24,38,18,.3)';
+  c.fillRect(x - 2, base - 3, TILE + 4, 5);
+
+  // ④ 零星浆果
+  if (hash(seed, 23) > 0.5) {
+    const bx = x + 10 + hash(seed, 29) * 28;
+    const by = base - 16 - hash(seed, 31) * 10;
+    c.fillStyle = '#b8495f';
+    c.beginPath(); c.arc(bx, by, 1.7, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,220,220,.5)';
+    c.fillRect(bx - 0.5, by - 1.5, 1, 1);
+  }
+}
 /**
  * 地图边界与树篱：一道**茂密到看得出走不过去**的灌木墙。
  *

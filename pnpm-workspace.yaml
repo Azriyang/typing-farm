@@ -1,8 +1,11 @@
+# pnpm 10+ 只有在声明 packages 时才把本文件当工作区配置读取
 packages:
   - '.'
 
-onlyBuiltDependencies:
-  - esbuild
-  - electron
-
+# 跑脚本前不校验依赖（避免 dev 阶段反复提示）
 verifyDepsBeforeRun: false
+
+# 注意：构建脚本的批准状态记在**全局**配置里，不进仓库。
+# CI 里没有这个状态，所以工作流用 --ignore-scripts 显式跳过：
+# esbuild / rollup 的原生二进制来自各自的平台包（@esbuild/*、@rollup/*），
+# 不依赖 postinstall，跳过是安全的。

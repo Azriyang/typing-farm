@@ -39,9 +39,13 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts 是必须的：pnpm 10+ 会把「未批准的依赖构建脚本」当成错误（退出码 1），
+        # 而批准状态记在**本地全局配置**里，CI 里没有。
+        # esbuild / rollup 的原生二进制来自各自的平台包（@esbuild/*、@rollup/*），
+        # 不靠 postinstall，所以跳过脚本不影响构建。
+        run: pnpm install --frozen-lockfile --ignore-scripts
         env:
-          # 网页版用不到 Electron 二进制，跳过 110MB 下载
+          # 双保险：万一以后去掉 --ignore-scripts，也别去下载 110MB 的 Electron
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
       - name: Typecheck & build

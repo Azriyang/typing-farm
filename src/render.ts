@@ -9,7 +9,7 @@ import {
   areaUnlocked, plotAreaOf, getScene, FURNITURE, ROOMS, sceneOfAnimal, indoorAnimalPos,
   FARM_DOORS, TOWN_FOUNTAIN, TOWN_WELL
 } from './world';
-import type { TownBuildingKind, IndoorScene } from './world';
+import type { TownBuildingKind, IndoorScene, TownBuilding } from './world';
 import type { Weather } from './types';
 import { resolveTarget, heldTool, hotbarHasTool } from './action';
 import { animalNearInScene, ANIMAL_DEFS, isProductReady } from './animals';
@@ -1186,8 +1186,6 @@ function drawBarn(c: Ctx) {
 
 /* ---------------- 小镇建筑 ---------------- */
 
-/* ---------------- 小镇建筑 ---------------- */
-
 /** 每种建筑的招牌 */
 const TOWN_SIGN: Record<TownBuildingKind, { text: string; color: string } | null> = {
   store: { text: '杂货店', color: '#f7e9c4' },
@@ -1199,171 +1197,498 @@ const TOWN_SIGN: Record<TownBuildingKind, { text: string; color: string } | null
   house: null
 };
 
-function drawTownBuildings(c: Ctx, nowMs = 0) {
-  for (const b of TOWN_BUILDINGS) {
-    const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
-    const north = b.y < 8; // 门朝街道（北侧建筑门在下，南侧建筑门在上）
+/* ---------------- 小镇建筑（上世纪乡镇风格） ---------------- */
 
-    // 钟楼单独画
-    if (b.kind === 'tower') { drawTower(c, x, y, w, h); continue; }
+/**
+ * 建筑材料配色：白灰墙、青砖、石材台基。
+ * 不用纯饱和色——老房子被雨淋了几十年，颜色要压灰。
+ */
+const TOWN_MATERIAL = {
+  plaster: { base: '#e4dbc6', dark: '#c9bda2', hi: '#f4efdf' },
+  brick:   { base: '#b3a894', dark: '#93887a', hi: '#cdc2ae' },
+  stone:   { base: '#9a9488', dark: '#7a7468', hi: '#b5afa2' }
+} as const;
 
-    c.fillStyle = 'rgba(60,40,20,.18)';
-    c.beginPath(); c.ellipse(x + w / 2, y + h - 2, w * 0.5, 10, 0, 0, Math.PI * 2); c.fill();
+/** 每类建筑的形制：墙material、瓦色、脊色、木作色 */
+interface TownBuildStyle {
+  wall: keyof typeof TOWN_MATERIAL;
+  roof: string;
+  ridge: string;
+  trim: string;
+  /** 雨棚 / 幌子布色 */
+  cloth?: string;
+}
 
-    // 墙（按类型换底色）
-    const wallBase =
-      b.kind === 'store' ? '#e8dcc0'
-      : b.kind === 'smith' ? '#cfc8bd'
-      : b.kind === 'clinic' ? '#f2f6f6'
-      : '#efdcba';
-    c.fillStyle = wallBase;
-    c.fillRect(x + 4, y + 22, w - 8, h - 22);
-    c.fillStyle = 'rgba(0,0,0,.08)';
-    for (let i = 0; i < 3; i++) c.fillRect(x + 4, y + 32 + i * 20, w - 8, 3);
+const TOWN_BUILD_STYLE: Record<string, TownBuildStyle> = {
+  store:  { wall: 'plaster', roof: '#5b7a8c', ridge: '#3a4f5c', trim: '#6b4a2e', cloth: '#3f6b8a' },
+  tavern: { wall: 'plaster', roof: '#8e4a3a', ridge: '#5e2e24', trim: '#4a3527', cloth: '#a8433a' },
+  smith:  { wall: 'brick',   roof: '#57534d', ridge: '#33302d', trim: '#3e3a35' },
+  clinic: { wall: 'plaster', roof: '#7e8e96', ridge: '#525f66', trim: '#4e5e64' },
+  school: { wall: 'brick',   roof: '#87603f', ridge: '#553c27', trim: '#6b4a2e' },
+  house:  { wall: 'plaster', roof: '#6d5b4e', ridge: '#443a31', trim: '#5a3c22' }
+};
 
-    // 屋顶
-    c.fillStyle = b.roof;
+/** 两个颜色按比例混合（a 为主，t 越大越偏 b） */
+function mixHex(a: string, b: string, t: number): string {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 255) * (1 - t) + ((pb >> 16) & 255) * t);
+  const g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t);
+  const bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t);
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
+}
+
+/**
+ * 一片瓦顶。
+ * ridgeAtBottom = true 表示屋脊在下、檐口在上（北向门、看见的是北面）。
+ */
+function drawTileRoof(
+  c: Ctx, roofL: number, roofR: number, top: number, bottom: number,
+  ridgeAtBottom: boolean, tile: string, ridge: string
+) {
+  const hgt = bottom - top;
+  if (hgt <= 4) return;
+
+  // 瓦面
+  c.fillStyle = tile;
+  c.fillRect(roofL, top, roofR - roofL, hgt);
+
+  // 瓦垄（竖向筒瓦）：每条左亮右暗，间距 7px
+  for (let xx = roofL + 2; xx < roofR - 2; xx += 7) {
+    c.fillStyle = 'rgba(255,255,255,.09)';
+    c.fillRect(xx, top + 2, 2, hgt - 4);
+    c.fillStyle = 'rgba(0,0,0,.12)';
+    c.fillRect(xx + 4, top + 2, 2, hgt - 4);
+  }
+
+  // 横向瓦楞：越靠檐越深
+  for (let i = 1; i < 7; i++) {
+    const ly = top + (hgt * i) / 7;
+    c.fillStyle = `rgba(0,0,0,${0.04 + i * 0.013})`;
+    c.fillRect(roofL + 2, Math.round(ly), roofR - roofL - 4, 1);
+  }
+
+  // 檐口：瓦当半圆 + 檐板
+  const eaveEdge = ridgeAtBottom ? top : bottom;
+  const dir = ridgeAtBottom ? 1 : -1;
+  c.fillStyle = shift(tile, -52);
+  c.fillRect(roofL, ridgeAtBottom ? top : bottom - 4, roofR - roofL, 4);
+  for (let xx = roofL + 3; xx < roofR - 4; xx += 7) {
+    const cy = eaveEdge + dir * 3.4;
+    c.fillStyle = shift(tile, -30);
+    c.beginPath(); c.arc(xx + 3, cy, 3.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.16)';
+    c.beginPath(); c.arc(xx + 3, cy - dir, 1.5, 0, Math.PI * 2); c.fill();
+  }
+
+  // 正脊
+  const ridgeY = ridgeAtBottom ? bottom - 5 : top - 5;
+  c.fillStyle = ridge;
+  c.fillRect(roofL - 3, ridgeY, roofR - roofL + 6, 10);
+  c.fillStyle = shift(ridge, 30);
+  c.fillRect(roofL - 3, ridgeY, roofR - roofL + 6, 2);
+
+  // 脊端起翘（鸱吻的简化）
+  const tip = ridgeAtBottom ? 1 : -1;
+  for (const ex of [roofL - 2, roofR + 2]) {
+    const out = ex < roofL ? -7 : 7;
+    c.fillStyle = ridge;
     c.beginPath();
-    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
+    c.moveTo(ex, ridgeY + (tip > 0 ? 10 : 0));
+    c.lineTo(ex + out, ridgeY + (tip > 0 ? 15 : -5));
+    c.lineTo(ex, ridgeY + (tip > 0 ? 1 : 9));
     c.closePath(); c.fill();
+  }
+}
 
-    // 瓦片纹理：一道道横向压痕 + 左右两坡的分界
-    c.save();
-    c.beginPath();
-    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w + 6, y + 26);
-    c.closePath();
-    c.clip();
-    for (let i = 0; i < 7; i++) {
-      const ly = y - 2 + i * 4.2;
-      c.fillStyle = `rgba(0,0,0,${0.06 + i * 0.012})`;
-      c.fillRect(x - 8, ly, w + 16, 1.4);
-    }
-    // 竖向瓦缝
-    for (let i = 0; i < Math.ceil(w / 9); i++) {
-      c.fillStyle = 'rgba(0,0,0,.05)';
-      c.fillRect(x + i * 9 + 2, y - 4, 1, 32);
-    }
-    c.restore();
+/** 木格窗：内凹窗洞 + 暖光 + 木棂 + 窗楣窗台 */
+function drawPeriodWindow(c: Ctx, x: number, y: number, w: number, h: number) {
+  // 窗洞内凹阴影
+  c.fillStyle = 'rgba(32,24,18,.55)';
+  c.fillRect(x - 2, y - 2, w + 4, h + 4);
 
-    // 受光面（右坡更亮）与阴面（左坡更暗）
-    c.fillStyle = 'rgba(0,0,0,.14)';
-    c.beginPath();
-    c.moveTo(x - 6, y + 26); c.lineTo(x + w * 0.25, y - 4); c.lineTo(x + w * 0.25, y + 26);
-    c.closePath(); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.12)';
-    c.beginPath();
-    c.moveTo(x + w + 6, y + 26); c.lineTo(x + w * 0.75, y - 4); c.lineTo(x + w * 0.75, y + 26);
-    c.closePath(); c.fill();
+  // 玻璃（偏冷）
+  c.fillStyle = '#5f7480';
+  c.fillRect(x, y, w, h);
+  // 室内透出的暖光落在下半部
+  c.fillStyle = 'rgba(216,172,104,.32)';
+  c.fillRect(x, y + h * 0.46, w, h * 0.54);
+  // 玻璃反光（斜条）
+  c.fillStyle = 'rgba(255,255,255,.20)';
+  c.beginPath();
+  c.moveTo(x + 2, y + h - 2); c.lineTo(x + w * 0.50, y + 1);
+  c.lineTo(x + w * 0.72, y + 1); c.lineTo(x + w * 0.24, y + h - 2);
+  c.closePath(); c.fill();
 
-    c.fillStyle = 'rgba(0,0,0,.2)';
-    c.fillRect(x - 6, y + 23, w + 12, 4);
+  // 木棂：一竖两横
+  c.fillStyle = '#6b4a2e';
+  c.fillRect(x + w / 2 - 1, y, 2, h);
+  c.fillRect(x, y + h * 0.44, w, 2);
 
-    // 烟囱（部分建筑有；商店和学堂不冒烟）
-    if (b.kind === 'house' || b.kind === 'tavern' || b.kind === 'smith' || b.kind === 'clinic') {
-      const chX = x + w * 0.68;
-      c.fillStyle = '#7d5a48';
-      c.fillRect(chX, y - 14, 11, 16);
-      c.fillStyle = '#9a7260';
-      c.fillRect(chX, y - 14, 11, 3);
-      c.fillStyle = '#5a3f32';
-      c.fillRect(chX + 2, y - 12, 7, 2);
-      // 砖缝
-      c.fillStyle = 'rgba(0,0,0,.18)';
-      c.fillRect(chX + 2, y - 8, 7, 1);
-      c.fillRect(chX + 2, y - 4, 7, 1);
-    }
+  // 窗框
+  c.strokeStyle = '#553a22'; c.lineWidth = 2;
+  c.strokeRect(x - 1, y - 1, w + 2, h + 2);
 
-    // 门廊 / 雨棚：只在宽一点的建筑上
-    if (b.w >= 4) {
-      const doorX = x + w / 2;
-      const canopyY = north ? y + h - 42 : y + 14;
-      c.fillStyle = 'rgba(0,0,0,.18)';
-      c.fillRect(doorX - 20, canopyY + 6, 40, 3);
-      c.fillStyle = b.roof;
-      c.fillRect(doorX - 22, canopyY, 44, 6);
-      c.fillStyle = 'rgba(255,255,255,.16)';
-      c.fillRect(doorX - 22, canopyY, 44, 2);
-    }
+  // 窗楣（木过梁）
+  c.fillStyle = '#7a5535';
+  c.fillRect(x - 3, y - 6, w + 6, 4);
+  c.fillStyle = 'rgba(255,255,255,.14)';
+  c.fillRect(x - 3, y - 6, w + 6, 1);
 
-    // 门：北侧商铺朝南；南区民宅按 doorStyle 朝东/北/西
-    const dStyle: 'n' | 's' | 'e' | 'w' = b.doorStyle ?? (north ? 's' : 'n');
-    if (dStyle === 'e' || dStyle === 'w') {
-      // 侧向门：画成竖着的门洞 + 门前台阶
-      const dx = dStyle === 'e' ? x + w - 15 : x + 3;
-      const dy = y + h / 2 - 17;
-      c.fillStyle = '#6f4a2b';
-      c.fillRect(dx, dy, 12, 34);
-      c.fillStyle = '#8a5f38';
-      c.fillRect(dx + 2, dy + 3, 8, 31);
-      c.fillStyle = '#e8c86a';
-      c.fillRect(dx + (dStyle === 'e' ? 3 : 6), dy + 16, 3, 3);
-      // 台阶
-      c.fillStyle = '#a89880';
-      c.fillRect(dStyle === 'e' ? x + w : x - 6, dy + 4, 6, 26);
-      c.fillStyle = 'rgba(255,240,210,.20)';
-      c.fillRect(dStyle === 'e' ? x + w : x - 6, dy + 4, 6, 1);
-    } else {
-      const doorY = dStyle === 's' ? y + h - 34 : y + 22;
-      c.fillStyle = '#6f4a2b';
-      c.fillRect(x + w / 2 - 13, doorY, 26, 34);
-      c.fillStyle = '#8a5f38';
-      c.fillRect(x + w / 2 - 10, doorY + 3, 20, 31);
-      c.fillStyle = '#e8c86a';
-      c.fillRect(x + w / 2 + 5, doorY + 16, 3, 3);
-      // 门前石阶
-      c.fillStyle = '#a89880';
-      c.fillRect(x + w / 2 - 16, dStyle === 's' ? y + h - 6 : y + 18, 32, 6);
-      c.fillStyle = 'rgba(255,240,210,.20)';
-      c.fillRect(x + w / 2 - 16, dStyle === 's' ? y + h - 6 : y + 18, 32, 1);
-    }
+  // 窗台 + 台面投影
+  c.fillStyle = '#8a6a48';
+  c.fillRect(x - 3, y + h + 1, w + 6, 3);
+  c.fillStyle = 'rgba(0,0,0,.26)';
+  c.fillRect(x - 3, y + h + 4, w + 6, 2);
+}
 
-    // 窗
-    c.fillStyle = '#7fb8d4';
-    c.fillRect(x + 12, y + 34, 20, 16);
-    c.fillRect(x + w - 32, y + 34, 20, 16);
-    c.strokeStyle = '#8e6a44'; c.lineWidth = 2;
-    c.strokeRect(x + 12, y + 34, 20, 16);
-    c.strokeRect(x + w - 32, y + 34, 20, 16);
-    // 窗反光
-    c.fillStyle = 'rgba(255,255,255,.32)';
-    c.beginPath();
-    c.moveTo(x + 14, y + 48); c.lineTo(x + 22, y + 34); c.lineTo(x + 26, y + 34); c.lineTo(x + 18, y + 48);
-    c.closePath(); c.fill();
+/** 内凹木门：门槛石、门套、门板、门簪 */
+function drawPeriodDoor(
+  c: Ctx, x: number, y: number, dw: number, dh: number,
+  opening: 'up' | 'down' | 'left' | 'right'
+) {
+  // 门洞（内凹）
+  c.fillStyle = 'rgba(26,20,15,.62)';
+  c.fillRect(x - 2, y - 2, dw + 4, dh + 4);
 
-    // 招牌
-    const sign = TOWN_SIGN[b.kind];
-    if (sign) {
-      c.fillStyle = sign.color;
-      c.fillRect(x + w / 2 - 24, y + 26, 48, 14);
-      c.fillStyle = '#8a5a2b';
-      c.font = 'bold 10px "PingFang SC",sans-serif';
-      c.textAlign = 'center';
-      c.fillText(sign.text, x + w / 2, y + 36);
-      c.textAlign = 'left';
-    }
+  // 门套（木框）
+  c.fillStyle = '#4a3018';
+  c.fillRect(x, y, dw, dh);
 
-    // 各类型的额外细节
-    if (b.kind === 'smith') {
-      // 烟囱冒的烟
-      c.fillStyle = '#8a8a8a';
-      c.fillRect(x + w - 26, y - 16, 12, 20);
-      c.fillStyle = 'rgba(180,180,180,.55)';
-      c.beginPath(); c.arc(x + w - 20, y - 22, 5, 0, Math.PI * 2); c.fill();
-      c.beginPath(); c.arc(x + w - 16, y - 32, 4, 0, Math.PI * 2); c.fill();
-    } else if (b.kind === 'tavern') {
-      // 门口挂的灯笼
-      c.fillStyle = '#c9563f';
-      c.beginPath(); c.arc(x + 16, y + h - 44, 5, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#f5c04a';
-      c.beginPath(); c.arc(x + 16, y + h - 46, 2.4, 0, Math.PI * 2); c.fill();
-    } else if (b.kind === 'clinic') {
-      // 红十字
-      c.fillStyle = '#d9534f';
-      c.fillRect(x + w / 2 - 7, y + 30, 14, 4);
-      c.fillRect(x + w / 2 - 2, y + 25, 4, 14);
+  // 门板：竖向木板 + 板缝
+  const innerX = x + 3;
+  const innerW = dw - 6;
+  c.fillStyle = '#8a5f38';
+  c.fillRect(innerX, y + 3, innerW, dh - 3);
+  c.fillStyle = 'rgba(0,0,0,.16)';
+  for (let i = 1; i < 4; i++) {
+    c.fillRect(innerX + (innerW * i) / 4, y + 3, 1, dh - 3);
+  }
+  // 上部高光（受光）
+  c.fillStyle = 'rgba(255,232,190,.16)';
+  c.fillRect(innerX, y + 3, innerW, 2);
+
+  // 门簪（横向加固木条）
+  c.fillStyle = '#6b4a2e';
+  c.fillRect(innerX, y + dh * 0.22, innerW, 3);
+  c.fillRect(innerX, y + dh * 0.74, innerW, 3);
+
+  // 门环
+  c.fillStyle = '#c9a44e';
+  const hx = x + dw / 2;
+  const hy = y + dh * 0.52;
+  c.beginPath(); c.arc(hx, hy, 2.6, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#7a5a20';
+  c.beginPath(); c.arc(hx, hy, 1.2, 0, Math.PI * 2); c.fill();
+
+  // 门槛石 + 门前石阶（按朝向伸出）
+  const stepY = opening === 'down' ? y + dh : opening === 'up' ? y - 5 : y + dh - 2;
+  c.fillStyle = '#a89880';
+  if (opening === 'left' || opening === 'right') {
+    const sx = opening === 'left' ? x - 6 : x + dw;
+    c.fillRect(sx, y + 3, 6, dh - 6);
+    c.fillStyle = 'rgba(255,240,210,.22)';
+    c.fillRect(sx, y + 3, 6, 1);
+  } else {
+    c.fillRect(x - 4, stepY, dw + 8, 5);
+    c.fillStyle = 'rgba(255,240,210,.22)';
+    c.fillRect(x - 4, stepY, dw + 8, 1);
+  }
+}
+
+/** 招牌：木牌 + 铁艺挑架（挂在檐下） */
+function drawShopSign(c: Ctx, x: number, w: number, y: number, text: string, bg: string) {
+  const sw = Math.min(52, text.length * 13 + 14);
+  const sx = x + w / 2 - sw / 2;
+
+  // 挑架
+  c.strokeStyle = '#3a2a1c'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(x + w / 2 - 6, y - 8); c.lineTo(x + w / 2 - 6, y - 1); c.stroke();
+  c.beginPath(); c.moveTo(x + w / 2 + 6, y - 8); c.lineTo(x + w / 2 + 6, y - 1); c.stroke();
+
+  // 牌面
+  c.fillStyle = '#4a3018';
+  c.fillRect(sx - 2, y - 2, sw + 4, 18);
+  c.fillStyle = bg;
+  c.fillRect(sx, y, sw, 14);
+  c.fillStyle = 'rgba(255,255,255,.20)';
+  c.fillRect(sx, y, sw, 1);
+  // 木纹
+  c.fillStyle = 'rgba(120,90,50,.16)';
+  c.fillRect(sx, y + 5, sw, 1);
+  c.fillRect(sx, y + 10, sw, 1);
+
+  // 字
+  c.fillStyle = '#4a2e18';
+  c.font = 'bold 10px "PingFang SC",sans-serif';
+  c.textAlign = 'center';
+  c.fillText(text, x + w / 2, y + 10.5);
+  c.textAlign = 'left';
+}
+
+/** 一栋上世纪风格的房子 */
+function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: number, h: number, nowMs: number) {
+  const style = TOWN_BUILD_STYLE[b.kind] ?? TOWN_BUILD_STYLE.house;
+  const mat = TOWN_MATERIAL[style.wall];
+  // 民宅统一成青瓦（保留一点原本色相的变化，年代感更准）
+  const tile = b.kind === 'house' ? mixHex(shift(b.roof, -30), '#6f757c', 0.66) : style.roof;
+  const ridge = b.kind === 'house' ? mixHex(shift(b.roof, -66), '#464b51', 0.72) : style.ridge;
+
+  const dStyle: 'n' | 's' | 'e' | 'w' = b.doorStyle ?? (b.y < 8 ? 's' : 'n');
+  // 北向门：看见的是北面，所以墙在上、瓦顶在下
+  const flip = dStyle === 'n';
+
+  // 地面投影
+  c.fillStyle = 'rgba(48,36,24,.20)';
+  c.beginPath(); c.ellipse(x + w / 2, y + h - 3, w * 0.55, 11, 0, 0, Math.PI * 2); c.fill();
+
+  // 版面：墙区与瓦顶区
+  const sideW = (dStyle === 'e' || dStyle === 'w') ? 16 : 8;
+  const wallL = x + sideW;
+  const wallR = x + w - sideW;
+  const wallTop = flip ? y + 4 : y + Math.round(h * 0.52);
+  const wallBottom = flip ? y + Math.round(h * 0.48) : y + h - 16;
+  const wallH = Math.max(16, wallBottom - wallTop);
+
+  // 侧墙（表现进深）
+  c.fillStyle = shift(mat.dark, -20);
+  c.fillRect(x + 1, wallTop, sideW, wallH + 12);
+  c.fillRect(x + w - sideW - 1, wallTop, sideW, wallH + 12);
+
+  // 主墙
+  c.fillStyle = mat.base;
+  c.fillRect(wallL, wallTop, wallR - wallL, wallH + 12);
+
+  // 风化：檐下阴影 + 墙脚返潮 + 竖向水痕
+  const vg = c.createLinearGradient(0, wallTop, 0, wallTop + wallH + 12);
+  vg.addColorStop(0, 'rgba(86,66,46,.26)');
+  vg.addColorStop(0.20, 'rgba(86,66,46,.05)');
+  vg.addColorStop(0.66, 'rgba(86,66,46,0)');
+  vg.addColorStop(1, 'rgba(66,52,38,.22)');
+  c.fillStyle = vg;
+  c.fillRect(wallL, wallTop, wallR - wallL, wallH + 12);
+
+  for (let i = 0; i < 5; i++) {
+    const sx = wallL + 10 + hash(b.x * 9 + i, b.y * 5) * (wallR - wallL - 20);
+    const sh = 12 + hash(b.y + i, b.x * 7) * (wallH * 0.55);
+    c.fillStyle = 'rgba(80,64,46,.07)';
+    c.fillRect(Math.round(sx), wallTop + 6, 2, Math.round(sh));
+  }
+
+  // 砖缝（只有砖墙才有）
+  if (style.wall === 'brick') {
+    c.fillStyle = 'rgba(58,48,40,.13)';
+    for (let yy = wallTop + 9; yy < wallTop + wallH + 10; yy += 9) {
+      c.fillRect(wallL, Math.round(yy), wallR - wallL, 1);
+      const off = (Math.round((yy - wallTop) / 9) % 2) * 11;
+      for (let xx = wallL + off; xx < wallR; xx += 22) c.fillRect(Math.round(xx), Math.round(yy), 1, 9);
     }
   }
 
+  // 台基（石砌）：贴在墙脚下方
+  const plinthY = wallTop + wallH + 12;
+  c.fillStyle = TOWN_MATERIAL.stone.dark;
+  c.fillRect(x + 2, plinthY, w - 4, 12);
+  c.fillStyle = TOWN_MATERIAL.stone.base;
+  c.fillRect(x + 2, plinthY, w - 4, 10);
+  c.fillStyle = TOWN_MATERIAL.stone.hi;
+  c.fillRect(x + 2, plinthY, w - 4, 1);
+  c.fillStyle = 'rgba(50,44,36,.30)';
+  for (let xx = x + 13; xx < x + w - 6; xx += 17) c.fillRect(Math.round(xx), plinthY + 1, 1, 9);
+  c.fillRect(x + 2, plinthY + 9, w - 4, 1);
+
+  // 墙角隅石（白灰墙上压深色条，做出"转角是石头砌的"）
+  c.fillStyle = 'rgba(90,78,62,.30)';
+  c.fillRect(wallL, wallTop, 4, wallH + 12);
+  c.fillRect(wallR - 4, wallTop, 4, wallH + 12);
+  c.fillStyle = 'rgba(255,250,235,.16)';
+  c.fillRect(wallL, wallTop, 1, wallH + 12);
+  c.fillRect(wallR - 1, wallTop, 1, wallH + 12);
+
+  // ── 瓦顶 ──
+  const roofL = x - 7;
+  const roofR = x + w + 7;
+  if (flip) {
+    // 北向：檐口在上（贴着墙脚），屋脊在下
+    const top = plinthY + 12;
+    const bottom = y + h - 2;
+    c.fillStyle = 'rgba(40,30,20,.26)';
+    c.fillRect(roofL + 3, top - 8, roofR - roofL - 6, 8);
+    drawTileRoof(c, roofL, roofR, top, bottom, true, tile, ridge);
+  } else {
+    // 南向：屋脊在上，檐口压在墙上
+    const top = y + 4;
+    const bottom = wallTop;
+    drawTileRoof(c, roofL, roofR, top, bottom, false, tile, ridge);
+    c.fillStyle = 'rgba(40,30,20,.30)';
+    c.fillRect(roofL + 3, bottom, roofR - roofL - 6, 7);
+  }
+
+  // ── 墙上元素统一排版：雨棚 → 招牌 → 窗 → 门，互不重叠 ──
+  const hasSign = !!TOWN_SIGN[b.kind];
+  const awningH = b.kind === 'store' ? 8 : 0;
+  const topPad = 4 + awningH + (hasSign && !flip ? 22 : 0);
+  const winY = wallTop + topPad + 2;
+  const doorDH = Math.min(34, Math.max(20, wallH - topPad - 10));
+  const doorTop = flip ? wallTop + 4 : wallTop + wallH - doorDH + 10;
+  const winH = Math.min(22, (flip ? wallTop + wallH : doorTop) - winY - 6);
+
+  // ── 窗 ──
+  if (winH >= 12) {
+    const cols = Math.max(2, Math.floor((w - 34) / 44));
+    const winW = 25;
+    const gap = (wallR - wallL - cols * winW) / (cols + 1);
+    for (let i = 0; i < cols; i++) {
+      const wx = Math.round(wallL + gap + i * (winW + gap));
+      // 门所在的位置留空
+      if (!flip && dStyle === 's' && i === Math.floor(cols / 2)) continue;
+      drawPeriodWindow(c, wx, winY, winW, winH);
+    }
+  }
+
+  // ── 门 ──
+  const dw = 26;
+  if (dStyle === 'e' || dStyle === 'w') {
+    // 侧门：开在侧墙上
+    const dx = dStyle === 'e' ? x + w - sideW + 1 : x + 3;
+    const dy = wallTop + wallH - doorDH + 2;
+    drawPeriodDoor(c, dx, Math.round(dy), 12, doorDH, dStyle === 'e' ? 'right' : 'left');
+  } else {
+    const dx = Math.round(x + w / 2 - dw / 2);
+    drawPeriodDoor(c, dx, Math.round(doorTop), dw, doorDH, flip ? 'up' : 'down');
+  }
+
+  // ── 招牌 ──
+  const sign = TOWN_SIGN[b.kind];
+  if (sign) {
+    drawShopSign(c, x, w, wallTop + 4 + awningH, sign.text, sign.color);
+  }
+
+  // ── 各店特征 ──
+  drawShopExtras(c, b, x, y, w, wallTop, plinthY, nowMs, style);
+}
+
+/** 各店铺的性格化细节 */
+function drawShopExtras(
+  c: Ctx, b: TownBuilding, x: number, y: number, w: number,
+  wallTop: number, plinthY: number, nowMs: number, style: TownBuildStyle
+) {
+  if (b.kind === 'smith') {
+    // 砖砌烟囱 + 烟（随时间飘）
+    const chX = x + w - 26;
+    c.fillStyle = '#6b5548';
+    c.fillRect(chX, y - 10, 12, 22);
+    c.fillStyle = '#846a58';
+    c.fillRect(chX, y - 10, 12, 3);
+    c.fillStyle = 'rgba(0,0,0,.22)';
+    c.fillRect(chX + 2, y - 5, 8, 1);
+    c.fillRect(chX + 2, y - 1, 8, 1);
+    // 烟
+    for (let i = 0; i < 3; i++) {
+      const t = (nowMs / 1400 + i * 0.33) % 1;
+      const sx = chX + 6 + Math.sin(t * Math.PI * 2 + i) * 7;
+      const sy = y - 14 - t * 26;
+      c.fillStyle = `rgba(190,190,185,${0.42 * (1 - t)})`;
+      c.beginPath(); c.arc(sx, sy, 3.5 + t * 3.5, 0, Math.PI * 2); c.fill();
+    }
+    // 门口堆的煤 / 铁料
+    c.fillStyle = '#3a3632';
+    c.beginPath(); c.ellipse(x + 16, plinthY + 2, 9, 4, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#4e4a45';
+    c.beginPath(); c.arc(x + 13, plinthY - 1, 3, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x + 19, plinthY, 2.6, 0, Math.PI * 2); c.fill();
+  } else if (b.kind === 'tavern') {
+    // 布幌子（挂在侧边）+ 灯笼
+    const bx = x + w - 14;
+    c.fillStyle = '#3a2a1c';
+    c.fillRect(bx, wallTop + 6, 2, 10);
+    c.fillStyle = style.cloth ?? '#a8433a';
+    c.fillRect(bx - 5, wallTop + 15, 12, 26);
+    c.fillStyle = 'rgba(255,255,255,.18)';
+    c.fillRect(bx - 5, wallTop + 15, 12, 2);
+    c.fillStyle = 'rgba(0,0,0,.16)';
+    c.fillRect(bx - 5, wallTop + 26, 12, 1);
+    // 幌子上的字（竖排，简化成一个色块）
+    c.fillStyle = 'rgba(250,240,215,.85)';
+    c.fillRect(bx - 2, wallTop + 20, 6, 6);
+    c.fillStyle = style.cloth ?? '#a8433a';
+    c.fillRect(bx - 1, wallTop + 22, 4, 2);
+    // 灯笼
+    c.fillStyle = '#c9563f';
+    c.beginPath(); c.ellipse(x + 15, wallTop + 16, 5, 6.5, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,220,140,.55)';
+    c.beginPath(); c.ellipse(x + 15, wallTop + 15, 2.6, 3.6, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#8a3a2e';
+    c.fillRect(x + 13, wallTop + 9, 5, 2);
+    c.fillRect(x + 13, wallTop + 22, 5, 2);
+  } else if (b.kind === 'clinic') {
+    // 白底红十字牌
+    c.fillStyle = '#f2f6f6';
+    c.fillRect(x + w / 2 - 9, wallTop + 2, 18, 18);
+    c.strokeStyle = '#8a9aa4'; c.lineWidth = 1;
+    c.strokeRect(x + w / 2 - 9, wallTop + 2, 18, 18);
+    c.fillStyle = '#c0392b';
+    c.fillRect(x + w / 2 - 5, wallTop + 8, 10, 3);
+    c.fillRect(x + w / 2 - 1.5, wallTop + 4, 3, 11);
+    // 门口两盆药草
+    for (const px of [x + 12, x + w - 16]) {
+      c.fillStyle = '#8a5a3a';
+      c.fillRect(px, plinthY - 6, 8, 6);
+      c.fillStyle = '#4a8a4a';
+      c.beginPath(); c.arc(px + 4, plinthY - 8, 4.5, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#5fa05a';
+      c.beginPath(); c.arc(px + 3, plinthY - 9, 2, 0, Math.PI * 2); c.fill();
+    }
+  } else if (b.kind === 'school') {
+    // 檐下挂的铜钟 + 墙面黑板
+    const bx = x + w / 2;
+    c.fillStyle = '#3a2a1c';
+    c.fillRect(bx - 1, wallTop + 4, 2, 5);
+    c.fillStyle = '#b08a3a';
+    c.beginPath();
+    c.moveTo(bx - 6, wallTop + 16);
+    c.quadraticCurveTo(bx - 6, wallTop + 7, bx, wallTop + 7);
+    c.quadraticCurveTo(bx + 6, wallTop + 7, bx + 6, wallTop + 16);
+    c.closePath(); c.fill();
+    c.fillStyle = '#d8b45a';
+    c.beginPath(); c.arc(bx, wallTop + 14, 2, 0, Math.PI * 2); c.fill();
+  } else if (b.kind === 'store') {
+    // 雨棚（条纹布）：挂在檐下、招牌之上
+    const ay = wallTop + 2;
+    const n = Math.max(4, Math.round((w - 10) / 11));
+    const cw = (w - 10) / n;
+    for (let i = 0; i < n; i++) {
+      c.fillStyle = i % 2 === 0 ? '#e8e0cc' : (style.cloth ?? '#3f6b8a');
+      c.fillRect(x + 5 + i * cw, ay, cw + 0.5, 7);
+    }
+    c.fillStyle = 'rgba(0,0,0,.20)';
+    c.fillRect(x + 5, ay + 7, w - 10, 3);
+    // 货箱
+    c.fillStyle = '#8a6a48';
+    c.fillRect(x + w - 24, plinthY - 10, 14, 10);
+    c.fillStyle = '#a8845c';
+    c.fillRect(x + w - 24, plinthY - 10, 14, 2);
+    c.fillStyle = 'rgba(0,0,0,.18)';
+    c.fillRect(x + w - 24, plinthY - 5, 14, 1);
+  } else if (b.kind === 'house') {
+    // 民居：窗台花盆 / 晾衣绳
+    if (w >= TILE * 3) {
+      c.fillStyle = '#8a5a3a';
+      c.fillRect(x + 12, plinthY - 7, 9, 7);
+      c.fillStyle = '#5a9a48';
+      c.beginPath(); c.arc(x + 15, plinthY - 9, 3.6, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#e86a9a';
+      c.beginPath(); c.arc(x + 18, plinthY - 11, 2, 0, Math.PI * 2); c.fill();
+    }
+  }
+}
+
+function drawTownBuildings(c: Ctx, nowMs = 0) {
+  for (const b of TOWN_BUILDINGS) {
+    const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
+    if (b.kind === 'tower') { drawTower(c, x, y, w, h); continue; }
+    drawPeriodBuilding(c, b, x, y, w, h, nowMs);
+  }
   drawFountain(c, nowMs);
   drawWell(c);
 }

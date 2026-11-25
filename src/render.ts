@@ -1026,208 +1026,131 @@ function drawThicket(c: Ctx, cx: number, baseY: number, seed: number, scale: num
   }
 }
 
+/**
+ * 玩家的小屋。
+ *
+ * 和镇上建筑共用同一套形制，只是大一号：
+ *   青瓦坡顶（正脊 + 两端起翘 + 瓦当）／白灰墙（隅石 + 檐下影 + 墙脚返潮）
+ *   ／石砌台基／木格窗（暖光）／内凹木门（门簪 + 铜门环）
+ * 这样玩家家看起来就是"这个镇子里的房子"，而不是另立一套。
+ */
 function drawHouse(c: Ctx) {
   const x0 = 3 * TILE, y0 = 2 * TILE;
-  const w = 6 * TILE, h = 5 * TILE;
-  const wallTop = y0 + 2.2 * TILE;
+  const w = 5 * TILE, h = 4 * TILE;          // 240 × 192
 
-  softShadow(c, x0 + w / 2, y0 + h - 2, w * 0.5, 13, 0.26);
+  const tile = '#727a82';                     // 青瓦
+  const ridge = '#4a5157';
+  const mat = TOWN_MATERIAL.plaster;
 
-  // ---- 墙体 ----
-  c.fillStyle = '#d8c4a0';
-  c.fillRect(x0 + 5, wallTop - 1, w - 10, h - 2.2 * TILE + 1);
-  c.fillStyle = '#f2e2c4';
-  c.fillRect(x0 + 6, wallTop, w - 12, h - 2.2 * TILE);
-  // 木纹横板
-  c.fillStyle = '#e3cfab';
+  c.fillStyle = 'rgba(48,36,24,.22)';
+  c.beginPath(); c.ellipse(x0 + w / 2, y0 + h - 3, w * 0.54, 12, 0, 0, Math.PI * 2); c.fill();
+
+  const wallTop = y0 + Math.round(h * 0.52);  // 屋顶与墙的分界
+  const plinthH = 15;
+  const wallBot = y0 + h - plinthH;
+  const wallL = x0 + 7;
+  const wallR = x0 + w - 7;
+
+  // 侧墙（表现进深）
+  c.fillStyle = shift(mat.dark, -22);
+  c.fillRect(x0 + 2, wallTop, 6, wallBot - wallTop + plinthH);
+  c.fillRect(x0 + w - 8, wallTop, 6, wallBot - wallTop + plinthH);
+
+  // 主墙
+  c.fillStyle = mat.base;
+  c.fillRect(wallL, wallTop, wallR - wallL, wallBot - wallTop + plinthH);
+
+  // 风化：檐下阴影 → 干净 → 墙脚返潮
+  const vg = c.createLinearGradient(0, wallTop, 0, wallBot + plinthH);
+  vg.addColorStop(0, 'rgba(86,66,46,.28)');
+  vg.addColorStop(0.22, 'rgba(86,66,46,.05)');
+  vg.addColorStop(0.68, 'rgba(86,66,46,0)');
+  vg.addColorStop(1, 'rgba(66,52,38,.22)');
+  c.fillStyle = vg;
+  c.fillRect(wallL, wallTop, wallR - wallL, wallBot - wallTop + plinthH);
+
+  // 竖向水痕
   for (let i = 0; i < 5; i++) {
-    c.fillRect(x0 + 6, wallTop + i * 20 + 16, w - 12, 2);
-    c.fillStyle = i % 2 ? '#e3cfab' : '#eaddc2';
-  }
-  // 顶部受光边
-  c.fillStyle = '#fdf2da';
-  c.fillRect(x0 + 6, wallTop, w - 12, 2);
-
-  // 木构架（描边色）
-  c.fillStyle = '#7a5334';
-  c.fillRect(x0 + 5, wallTop - 1, 6, h - 2.2 * TILE + 1);
-  c.fillRect(x0 + w - 11, wallTop - 1, 6, h - 2.2 * TILE + 1);
-  c.fillStyle = '#9b7350';
-  c.fillRect(x0 + 6, wallTop, 2, h - 2.2 * TILE);
-  c.fillRect(x0 + w - 10, wallTop, 2, h - 2.2 * TILE);
-
-  // ---- 屋顶（瓦片） ----
-  const rTop = y0 - 6;
-  const rBot = y0 + 2.4 * TILE;
-  const halfTop = 52;
-  c.fillStyle = '#8f3a29';
-  c.beginPath();
-  c.moveTo(x0 - 11, rBot + 1);
-  c.lineTo(x0 + halfTop - 1, rTop - 1);
-  c.lineTo(x0 + w - halfTop + 1, rTop - 1);
-  c.lineTo(x0 + w + 11, rBot + 1);
-  c.closePath();
-  c.fill();
-
-  c.fillStyle = '#c9563f';
-  c.beginPath();
-  c.moveTo(x0 - 10, rBot);
-  c.lineTo(x0 + halfTop, rTop);
-  c.lineTo(x0 + w - halfTop, rTop);
-  c.lineTo(x0 + w + 10, rBot);
-  c.closePath();
-  c.fill();
-
-  // 瓦片：横排 + 错位竖缝
-  const rows = 5;
-  for (let i = 0; i < rows; i++) {
-    const t0 = i / rows;
-    const yy = rTop + t0 * (rBot - rTop);
-    const spread = 10 + ((i * halfTop) / rows);
-    const left = x0 - 10 + spread * 0.4;
-    const right = x0 + w + 10 - spread * 0.4;
-    // 每排底部阴影线
-    c.fillStyle = '#a8402e';
-    c.fillRect(left, yy + (rBot - rTop) / rows - 2, right - left, 2);
-    // 每排顶部高光
-    c.fillStyle = '#e0795c';
-    c.fillRect(left, yy, right - left, 1);
-    // 竖向瓦缝（隔一排错位）
-    c.fillStyle = '#b34a36';
-    const gap = 12;
-    const off = i % 2 ? gap / 2 : 0;
-    for (let wx = left + off; wx < right; wx += gap) {
-      c.fillRect(wx, yy + 1, 1, (rBot - rTop) / rows - 3);
-    }
+    const sx = wallL + 12 + hash(i * 13, 7) * (wallR - wallL - 24);
+    c.fillStyle = 'rgba(80,64,46,.07)';
+    c.fillRect(Math.round(sx), wallTop + 8, 2, 12 + hash(7, i * 5) * 24);
   }
 
-  // 屋脊高光
-  c.fillStyle = '#f0a08a';
-  c.fillRect(x0 + halfTop, rTop, w - halfTop * 2, 2);
+  // 墙角隅石
+  c.fillStyle = 'rgba(90,78,62,.30)';
+  c.fillRect(wallL, wallTop, 4, wallBot - wallTop + plinthH);
+  c.fillRect(wallR - 4, wallTop, 4, wallBot - wallTop + plinthH);
+  c.fillStyle = 'rgba(255,250,235,.16)';
+  c.fillRect(wallL, wallTop, 1, wallBot - wallTop + plinthH);
+  c.fillRect(wallR - 1, wallTop, 1, wallBot - wallTop + plinthH);
 
-  // 屋檐
-  c.fillStyle = '#6f2c1e';
-  c.fillRect(x0 - 11, rBot - 4, w + 22, 6);
-  c.fillStyle = '#8f3a29';
-  c.fillRect(x0 - 11, rBot - 4, w + 22, 3);
+  // ── 台基（门洞处断开，改门前石阶）──
+  const doorW = 30, doorH = 36;
+  const doorX = Math.round(x0 + w / 2 - doorW / 2);
+  const doorY = wallBot - doorH + 6;
 
-  // ---- 烟囱 ----
-  c.fillStyle = '#6b5240';
-  c.fillRect(x0 + w - 72, y0 - 28, 24, 36);
-  c.fillStyle = '#9c7a5a';
-  c.fillRect(x0 + w - 70, y0 - 26, 20, 32);
-  c.fillStyle = '#b08f6e';
-  c.fillRect(x0 + w - 70, y0 - 26, 4, 32);
-  // 烟囱帽
-  c.fillStyle = '#6b5240';
-  c.fillRect(x0 + w - 76, y0 - 32, 32, 8);
-  c.fillStyle = '#8a6b52';
-  c.fillRect(x0 + w - 74, y0 - 30, 28, 4);
-
-  // ---- 门 ----
-  const dx = x0 + 2 * TILE + 4;
-  const dy = y0 + 3.5 * TILE;
-  const dw = TILE - 8, dh = 1.5 * TILE;
-  c.fillStyle = '#5a3c22';
-  c.fillRect(dx - 1, dy - 1, dw + 2, dh + 1);
-  c.fillStyle = '#6f4a2b';
-  c.fillRect(dx, dy, dw, dh);
-  c.fillStyle = '#8a5f38';
-  c.fillRect(dx + 4, dy + 4, dw - 8, dh - 6);
-  // 木纹
-  c.fillStyle = '#7d5533';
-  c.fillRect(dx + 8, dy + 6, 1, dh - 10);
-  c.fillRect(dx + dw - 12, dy + 6, 1, dh - 10);
-  // 门把
-  c.fillStyle = '#e8c86a';
-  c.fillRect(dx + dw - 14, dy + dh / 2 - 2, 5, 5);
-  c.fillStyle = '#f7e3a0';
-  c.fillRect(dx + dw - 14, dy + dh / 2 - 2, 2, 2);
-
-  // ---- 窗（暖光 + 反光） ----
-  const winY = y0 + 3.2 * TILE;
-  const drawWindow = (wx: number) => {
-    // 外框
-    c.fillStyle = '#7a5334';
-    c.fillRect(wx - 2, winY - 2, 44, 34);
-    // 玻璃
-    c.fillStyle = '#8ec4dc';
-    c.fillRect(wx, winY, 40, 30);
-    // 下暗上亮
-    c.fillStyle = '#6fa8c4';
-    c.fillRect(wx, winY + 16, 40, 14);
-    // 反光斜条
-    c.fillStyle = 'rgba(255,255,255,.42)';
-    c.beginPath();
-    c.moveTo(wx + 6, winY + 30);
-    c.lineTo(wx + 18, winY);
-    c.lineTo(wx + 27, winY);
-    c.lineTo(wx + 15, winY + 30);
-    c.closePath();
-    c.fill();
-    // 窗棂
-    c.fillStyle = '#7a5334';
-    c.fillRect(wx + 18, winY, 3, 30);
-    c.fillRect(wx, winY + 13, 40, 3);
-  };
-  drawWindow(x0 + 26);
-  drawWindow(x0 + w - 68);
-
-  // 窗台
-  c.fillStyle = '#9b7350';
-  c.fillRect(x0 + 24, winY + 32, 44, 3);
-  c.fillRect(x0 + w - 70, winY + 32, 44, 3);
-
-  // ---- 石砌台基（门的位置留出台阶） ----
-  const plinthH = 14;
-  const plinthY = y0 + h - plinthH;
-  c.fillStyle = TOWN_MATERIAL.stone.dark;
-  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), plinthH);
-  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), plinthH);
-  c.fillStyle = TOWN_MATERIAL.stone.base;
-  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), plinthH - 3);
-  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), plinthH - 3);
-  c.fillStyle = TOWN_MATERIAL.stone.hi;
-  c.fillRect(x0 + 4, plinthY, (dx - 6) - (x0 + 4), 1);
-  c.fillRect(dx + dw + 6, plinthY, (x0 + w - 4) - (dx + dw + 6), 1);
-  c.fillStyle = 'rgba(50,44,36,.30)';
-  for (let sx = x0 + 16; sx < x0 + w - 8; sx += 24) {
-    if (sx > dx - 8 && sx < dx + dw + 8) continue;   // 门洞处不画石缝
-    c.fillRect(sx, plinthY + 2, 1, plinthH - 6);
-  }
-  // 门前石阶
+  stonePlinth(c, x0 + 4, wallBot, doorX - 8 - (x0 + 4), plinthH);
+  stonePlinth(c, doorX + doorW + 8, wallBot, (x0 + w - 4) - (doorX + doorW + 8), plinthH);
   c.fillStyle = '#b3ab9c';
-  c.fillRect(dx - 6, y0 + h - 7, dw + 12, 7);
+  c.fillRect(doorX - 6, y0 + h - 8, doorW + 12, 8);
   c.fillStyle = '#cfc7b6';
-  c.fillRect(dx - 6, y0 + h - 7, dw + 12, 2);
+  c.fillRect(doorX - 6, y0 + h - 8, doorW + 12, 2);
   c.fillStyle = 'rgba(40,28,16,.28)';
-  c.fillRect(dx - 6, y0 + h - 1, dw + 12, 3);
+  c.fillRect(doorX - 6, y0 + h - 1, doorW + 12, 3);
 
-  // ---- 门边挂灯 ----
-  c.fillStyle = '#3a2a1c';
-  c.fillRect(dx + dw + 12, dy + 6, 3, 10);
-  c.fillStyle = '#c9563f';
-  c.beginPath(); c.ellipse(dx + dw + 13.5, dy + 20, 6, 7.5, 0, 0, Math.PI * 2); c.fill();
-  c.fillStyle = 'rgba(255,226,150,.75)';
-  c.beginPath(); c.ellipse(dx + dw + 13.5, dy + 19, 3, 4.2, 0, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#8a3a2e';
-  c.fillRect(dx + dw + 8, dy + 12, 11, 2);
-  c.fillRect(dx + dw + 8, dy + 27, 11, 2);
+  // ── 青瓦坡顶 ──
+  drawTileRoof(c, x0 - 9, x0 + w + 9, y0 - 12, wallTop, false, tile, ridge);
+  c.fillStyle = 'rgba(40,30,20,.30)';
+  c.fillRect(x0 - 9, wallTop, w + 18, 7);
 
-  // ---- 窗下花箱 ----
-  for (const wx of [x0 + 22, x0 + w - 72]) {
+  // 砖砌烟囱（压在屋脊右侧）
+  const chX = x0 + w - 56;
+  c.fillStyle = '#7d5a48';
+  c.fillRect(chX, y0 - 28, 16, 30);
+  c.fillStyle = '#9a7260';
+  c.fillRect(chX, y0 - 28, 16, 3);
+  c.fillStyle = 'rgba(0,0,0,.20)';
+  c.fillRect(chX + 3, y0 - 20, 10, 1);
+  c.fillRect(chX + 3, y0 - 14, 10, 1);
+  c.fillStyle = '#5a3f32';
+  c.fillRect(chX + 2, y0 - 26, 12, 2);
+
+  // ── 木格窗（和镇上同一套：暖光 + 木棂 + 窗楣 + 窗台）──
+  const winW = 26, winH = 22;
+  const winY = wallTop + 13;
+  const winLX = x0 + 28;
+  const winRX = x0 + w - 28 - winW;
+  drawPeriodWindow(c, winLX, winY, winW, winH);
+  drawPeriodWindow(c, winRX, winY, winW, winH);
+
+  // 窗下花箱
+  for (const wx of [winLX, winRX]) {
     c.fillStyle = '#7a5334';
-    c.fillRect(wx, winY + 35, 48, 9);
+    c.fillRect(wx - 2, winY + winH + 8, winW + 4, 9);
     c.fillStyle = '#9b7350';
-    c.fillRect(wx, winY + 35, 48, 2);
-    for (let i = 0; i < 5; i++) {
-      const bx = wx + 5 + i * 9;
+    c.fillRect(wx - 2, winY + winH + 8, winW + 4, 2);
+    for (let i = 0; i < 4; i++) {
+      const bx = wx + 3 + i * 7;
       c.fillStyle = i % 2 ? '#4a8a4a' : '#5a9a52';
-      c.beginPath(); c.arc(bx, winY + 33, 3.2, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(bx, winY + winH + 7, 3, 0, Math.PI * 2); c.fill();
       c.fillStyle = i % 3 ? '#e86a9a' : '#f2d45c';
-      c.beginPath(); c.arc(bx + 1, winY + 31.5, 1.8, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(bx + 1, winY + winH + 5.5, 1.7, 0, Math.PI * 2); c.fill();
     }
   }
+
+  // ── 内凹木门（门簪 + 铜门环，和镇上同一套）──
+  drawPeriodDoor(c, doorX, doorY, doorW, doorH, 'down');
+
+  // 门边挂灯
+  c.fillStyle = '#3a2a1c';
+  c.fillRect(doorX + doorW + 11, doorY + 6, 3, 10);
+  c.fillStyle = '#c9563f';
+  c.beginPath(); c.ellipse(doorX + doorW + 12.5, doorY + 20, 5.5, 7, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgba(255,226,150,.75)';
+  c.beginPath(); c.ellipse(doorX + doorW + 12.5, doorY + 19, 2.8, 4, 0, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#8a3a2e';
+  c.fillRect(doorX + doorW + 7, doorY + 12, 11, 2);
+  c.fillRect(doorX + doorW + 7, doorY + 27, 11, 2);
 }
 
 /* ---------------- 畜栏与棚舍 ---------------- */

@@ -383,7 +383,7 @@ export const ROOMS: Record<IndoorScene, Room> = {
 
 /** 农场里三个建筑的门位置（用于从室内走回农场时定位置） */
 export const FARM_DOORS: Record<'house' | 'coop' | 'barn' | 'mine', { tx: number; ty: number }> = {
-  house: { tx: 5, ty: 6 },
+  house: { tx: 5, ty: 5 },
   coop: { tx: 4, ty: 19 },
   barn: { tx: 9, ty: 19 },
   mine: { tx: 13, ty: 3 }
@@ -516,10 +516,10 @@ function buildFarmTerrain(): void {
     }
   }
 
-  // 小屋 6x5
-  setRect(3, 2, 6, 3, T.ROOF);
-  setRect(3, 5, 6, 2, T.WALL);
-  set(5, 6, T.DOOR);
+  // 小屋 5x4（比镇上的 3x3 大一号，但用同一套形制）
+  setRect(3, 2, 5, 3, T.ROOF);
+  setRect(3, 5, 5, 1, T.WALL);
+  set(5, 5, T.DOOR);
 
   // 鸡舍 / 牛棚 / 矿洞的门（让玩家能从外面走进去）
   set(FARM_DOORS.coop.tx, FARM_DOORS.coop.ty, T.DOOR);

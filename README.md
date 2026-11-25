@@ -122,6 +122,11 @@ node serve.mjs      # 运行打包版 → http://127.0.0.1:5181/
 
 Windows 上更省事：**双击 `play.bat`**，自动起服务器并打开浏览器。
 
+**在线试玩**：https://azriyang.github.io/typing-farm/
+
+推送 `main` 会自动构建并发布到 GitHub Pages（见 `.github/workflows/deploy.yml`）。
+仓库 Settings → Pages → Source 需选「GitHub Actions」，只需设置一次。
+
 > 打包产物是普通静态文件，但用了 ES module，浏览器不允许 `file://` 直接打开，
 > 所以需要一个本地服务器（`serve.mjs` 是零依赖的 20 行实现）。
 

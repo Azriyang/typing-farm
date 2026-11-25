@@ -1434,20 +1434,19 @@ function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: nu
   const tile = b.kind === 'house' ? mixHex(shift(b.roof, -30), '#6f757c', 0.66) : style.roof;
   const ridge = b.kind === 'house' ? mixHex(shift(b.roof, -66), '#464b51', 0.72) : style.ridge;
 
-  const dStyle: 'n' | 's' | 'e' | 'w' = b.doorStyle ?? (b.y < 8 ? 's' : 'n');
-  // 北向门：看见的是北面，所以墙在上、瓦顶在下
-  const flip = dStyle === 'n';
+  // 所有建筑统一朝南：瓦顶在上、墙面和门在下，玩家从下方走过来进门。
+  // （曾经给北向门的民宅做过「墙在上、瓦顶在下」的翻转，看起来像房子倒过来了，已废弃。）
 
   // 地面投影
   c.fillStyle = 'rgba(48,36,24,.20)';
   c.beginPath(); c.ellipse(x + w / 2, y + h - 3, w * 0.55, 11, 0, 0, Math.PI * 2); c.fill();
 
   // 版面：墙区与瓦顶区
-  const sideW = (dStyle === 'e' || dStyle === 'w') ? 16 : 8;
+  const sideW = 8;
   const wallL = x + sideW;
   const wallR = x + w - sideW;
-  const wallTop = flip ? y + 4 : y + Math.round(h * 0.52);
-  const wallBottom = flip ? y + Math.round(h * 0.48) : y + h - 16;
+  const wallTop = y + Math.round(h * 0.52);
+  const wallBottom = y + h - 16;
   const wallH = Math.max(16, wallBottom - wallTop);
 
   // 侧墙（表现进深）
@@ -1505,33 +1504,21 @@ function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: nu
   c.fillRect(wallL, wallTop, 1, wallH + 12);
   c.fillRect(wallR - 1, wallTop, 1, wallH + 12);
 
-  // ── 瓦顶 ──
+  // ── 瓦顶（统一：屋脊在上，檐口压在墙顶）──
   const roofL = x - 7;
   const roofR = x + w + 7;
-  if (flip) {
-    // 北向：檐口在上（贴着墙脚），屋脊在下
-    const top = plinthY + 12;
-    const bottom = y + h - 2;
-    c.fillStyle = 'rgba(40,30,20,.26)';
-    c.fillRect(roofL + 3, top - 8, roofR - roofL - 6, 8);
-    drawTileRoof(c, roofL, roofR, top, bottom, true, tile, ridge);
-  } else {
-    // 南向：屋脊在上，檐口压在墙上
-    const top = y + 4;
-    const bottom = wallTop;
-    drawTileRoof(c, roofL, roofR, top, bottom, false, tile, ridge);
-    c.fillStyle = 'rgba(40,30,20,.30)';
-    c.fillRect(roofL + 3, bottom, roofR - roofL - 6, 7);
-  }
+  drawTileRoof(c, roofL, roofR, y + 4, wallTop, false, tile, ridge);
+  c.fillStyle = 'rgba(40,30,20,.30)';
+  c.fillRect(roofL + 3, wallTop, roofR - roofL - 6, 7);
 
   // ── 墙上元素统一排版：雨棚 → 招牌 → 窗 → 门，互不重叠 ──
   const hasSign = !!TOWN_SIGN[b.kind];
   const awningH = b.kind === 'store' ? 8 : 0;
-  const topPad = 4 + awningH + (hasSign && !flip ? 22 : 0);
+  const topPad = 4 + awningH + (hasSign ? 22 : 0);
   const winY = wallTop + topPad + 2;
   const doorDH = Math.min(34, Math.max(20, wallH - topPad - 10));
-  const doorTop = flip ? wallTop + 4 : wallTop + wallH - doorDH + 10;
-  const winH = Math.min(22, (flip ? wallTop + wallH : doorTop) - winY - 6);
+  const doorTop = wallTop + wallH - doorDH + 10;
+  const winH = Math.min(22, doorTop - winY - 6);
 
   // ── 窗 ──
   if (winH >= 12) {
@@ -1541,22 +1528,15 @@ function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: nu
     for (let i = 0; i < cols; i++) {
       const wx = Math.round(wallL + gap + i * (winW + gap));
       // 门所在的位置留空
-      if (!flip && dStyle === 's' && i === Math.floor(cols / 2)) continue;
+      if (i === Math.floor(cols / 2)) continue;
       drawPeriodWindow(c, wx, winY, winW, winH);
     }
   }
 
-  // ── 门 ──
+  // ── 门：一律在正面（南侧）下方居中，玩家走到下方按空格进门 ──
   const dw = 26;
-  if (dStyle === 'e' || dStyle === 'w') {
-    // 侧门：开在侧墙上
-    const dx = dStyle === 'e' ? x + w - sideW + 1 : x + 3;
-    const dy = wallTop + wallH - doorDH + 2;
-    drawPeriodDoor(c, dx, Math.round(dy), 12, doorDH, dStyle === 'e' ? 'right' : 'left');
-  } else {
-    const dx = Math.round(x + w / 2 - dw / 2);
-    drawPeriodDoor(c, dx, Math.round(doorTop), dw, doorDH, flip ? 'up' : 'down');
-  }
+  const dx = Math.round(x + w / 2 - dw / 2);
+  drawPeriodDoor(c, dx, Math.round(doorTop), dw, doorDH, 'down');
 
   // ── 招牌 ──
   const sign = TOWN_SIGN[b.kind];

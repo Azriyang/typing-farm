@@ -180,8 +180,6 @@ export interface TownBuilding {
   roof: string;
   /** 门在建筑内的相对位置（tile）；有 door 表示能进去 */
   door?: { dx: number; dy: number };
-  /** 仅用于渲染的门朝向（民宅这类不可进入的建筑） */
-  doorStyle?: 'n' | 's' | 'e' | 'w';
 }
 
 /** 北侧一条街 + 南侧民宅，中间是主街与广场。刻意错落：高度、宽度、退进都不齐 */
@@ -195,12 +193,12 @@ export const TOWN_BUILDINGS: TownBuilding[] = [
   { x: 60, y: 2, w: 3, h: 6, kind: 'tower',  roof: '#6b6b6b' },                          // 钟楼在广场东北角，不挡路
 
   // ── 南区民宅：朝向各不相同（东 / 北 / 西）──
-  { x: 35, y: 10, w: 3, h: 3, kind: 'house', roof: '#c9743f', doorStyle: 'e' },
-  { x: 35, y: 14, w: 3, h: 3, kind: 'house', roof: '#6fae4e', doorStyle: 'e' },
-  { x: 39, y: 15, w: 3, h: 3, kind: 'house', roof: '#b06a8f', doorStyle: 'n' },
-  { x: 48, y: 14, w: 3, h: 3, kind: 'house', roof: '#c9a23f', doorStyle: 'n' },          // 紧贴广场南沿
-  { x: 52, y: 14, w: 4, h: 3, kind: 'house', roof: '#7a8fb0', doorStyle: 'n' },
-  { x: 57, y: 14, w: 3, h: 3, kind: 'house', roof: '#9a7a5a', doorStyle: 'w' }
+  { x: 35, y: 10, w: 3, h: 3, kind: 'house', roof: '#c9743f' },
+  { x: 35, y: 14, w: 3, h: 3, kind: 'house', roof: '#6fae4e' },
+  { x: 39, y: 14, w: 3, h: 3, kind: 'house', roof: '#b06a8f' },
+  { x: 48, y: 14, w: 3, h: 3, kind: 'house', roof: '#c9a23f' },   // 紧贴广场南沿
+  { x: 52, y: 14, w: 4, h: 3, kind: 'house', roof: '#7a8fb0' },
+  { x: 57, y: 14, w: 3, h: 3, kind: 'house', roof: '#9a7a5a' }
 ];
 
 /** 广场（路网枢纽）：主街从西撞进来，东街从东沿出去 */

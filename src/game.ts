@@ -34,6 +34,9 @@ import {
 } from './llm';
 import type { VillagerBrief } from './llm';
 import {
+  exportToFile, parseBundle, importFromText, readFileAsText
+} from './savefile';
+import {
   CRAFT_RECIPES, recipeById, absoluteMinutes, outName, inputText, remainingText
 } from './craft';
 import {
@@ -2011,6 +2014,131 @@ async function testAi(): Promise<void> {
   }
 }
 
+/* ---------------- 存档：导出 / 导入 ---------------- */
+
+function openSaveFilePanel(): void {
+  // 用实时 state 而不是 storage：刚开新档还没存过盘时也要显示得对
+  const ls = learnStats();
+  const hasProgress = state.day > 0;
+  const where = isDesktopPath()
+    ? '存档文件在电脑的 <code>%APPDATA%\\typing-farm\\saves\\</code> 里。'
+    : '网页版的存档保存在<b>这个浏览器</b>里（按域名隔离）。';
+
+  const summaryHtml = hasProgress
+    ? `<div class="save-stats">
+         <div class="ss-item"><span class="k">第几天</span><b>${state.day}</b></div>
+         <div class="ss-item"><span class="k">金币</span><b>${Math.round(state.coins)}</b></div>
+         <div class="ss-item"><span class="k">掌握词数</span><b>${ls.mastered}</b></div>
+       </div>`
+    : `<p class="dim">还没有存档——先在标题页点「开始新生活」。</p>`;
+
+  UI.showModal(
+    '💾 存档',
+    `<p class="dim">${where}</p>
+     ${summaryHtml}
+     <div class="save-note">
+       <b>为什么建议定期导出：</b>
+       换浏览器、清缓存、或者 Safari 七天没访问，网页版的存档都可能没掉。
+       导出一份文件放到网盘或发给自己，就不会丢。
+     </div>
+     <p class="dim">导出的是一个 <code>.json</code> 文件，里面含主进度和学习进度。</p>
+     <input type="file" id="save-import-file" accept=".json,application/json" hidden>
+     <p class="dim" id="save-import-status"></p>`,
+    [
+      { label: '导出文件', cls: 'green', onClick: () => doExportSave() },
+      { label: '导入文件', cls: '', onClick: () => pickImportFile() },
+      { label: '关闭', cls: 'ghost', onClick: () => UI.hideModal() }
+    ]
+  );
+
+  const input = document.getElementById('save-import-file') as HTMLInputElement | null;
+  input?.addEventListener('change', () => { void onImportFileChosen(input); });
+}
+
+/** 桌面版和网页版存档位置不同，给不同的说明 */
+function isDesktopPath(): boolean {
+  return typeof window !== 'undefined' && !!window.__FARM_DESKTOP__;
+}
+
+function doExportSave(): void {
+  const r = exportToFile('0.1.0');
+  if (!r.ok) {
+    UI.toast(r.reason ?? '导出失败', 'bad');
+    return;
+  }
+  UI.toast('已导出存档文件', 'good');
+}
+
+function pickImportFile(): void {
+  const input = document.getElementById('save-import-file') as HTMLInputElement | null;
+  if (!input) return;
+  input.value = '';          // 允许重复选同一个文件
+  input.click();
+}
+
+async function onImportFileChosen(input: HTMLInputElement): Promise<void> {
+  const file = input.files?.[0];
+  const status = document.getElementById('save-import-status');
+  if (!file) return;
+
+  if (status) status.textContent = `正在读取 ${file.name}…`;
+  let text: string;
+  try {
+    text = await readFileAsText(file);
+  } catch {
+    if (status) status.textContent = '读取文件失败，换一个试试。';
+    return;
+  }
+
+  // 先只校验，把结果讲清楚，再问要不要覆盖
+  const parsed = parseBundle(text);
+  if (!parsed.ok) {
+    if (status) status.textContent = `这个文件不能用：${parsed.reason}`;
+    UI.toast('存档文件无效', 'bad');
+    return;
+  }
+
+  const preview = (() => {
+    try {
+      const s = JSON.parse(parsed.bundle!.keys[CFG.SAVE_KEY]) as { day?: number; coins?: number };
+      return `第 ${s.day ?? '?'} 天 · ${s.coins ?? '?'}G`;
+    } catch {
+      return '无法预览';
+    }
+  })();
+
+  if (status) status.textContent = '已读取，等待确认…';
+
+  UI.showModal(
+    '导入存档',
+    `<p>文件：<code>${file.name}</code></p>
+     <p>里面的进度：<b>${preview}</b></p>
+     <div class="save-warn">
+       导入会用这个存档<b>覆盖当前进度</b>，而且不能撤销。<br>
+       如果现在的进度还想留着，先点「取消」回去导出一次。
+     </div>`,
+    [
+      {
+        label: '覆盖并重载', cls: 'green', onClick: () => {
+          const res = importFromText(text);
+          if (!res.ok) {
+            UI.toast(res.reason ?? '导入失败', 'bad');
+            return;
+          }
+          Sound.play('levelup');
+          UI.hideModal();
+          UI.toast(res.warning ? `导入成功（${res.warning}）` : '导入成功，正在重新载入…', 'good');
+          // 关键：先把 running 关掉再重载。
+          // 否则 beforeunload 里的自动存档会拿**内存里的旧状态**把刚导入的档覆盖掉。
+          running = false;
+          window.setTimeout(() => window.location.reload(), 700);
+        }
+      },
+      { label: '取消', cls: 'ghost', onClick: () => openSaveFilePanel() }
+    ]
+  );
+}
+
 function tryInteract(): void {
   if (!running || session.active || UI.isModalOpen()) return;
   if (fishing.phase !== 'idle') return;
@@ -3794,6 +3922,7 @@ function startGame(fresh: boolean): void {
   }
   restoreScene();
   running = true;
+  save();   // 立刻落一次盘，避免刚开局时导存档拿不到数据
   scheduleAiPrefetch();
   UI.hideHint();
   document.getElementById('title-screen')?.classList.add('hidden');
@@ -3975,6 +4104,7 @@ export function boot(): void {
 
   // AI 设置：只有桌面版才有意义，浏览器版点开是一段说明
   document.getElementById('btn-ai')?.addEventListener('click', () => openAiSettings());
+  document.getElementById('btn-save')?.addEventListener('click', () => openSaveFilePanel());
 
   // 点击画面自动走过去（打字游戏里，移动不该占用打字的手）
   cv.addEventListener('click', (e) => {
@@ -3987,6 +4117,7 @@ export function boot(): void {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', () => keys.clear());
   window.addEventListener('beforeunload', () => {
+    // 导入存档后会把 running 置 false，避免这里把旧状态写回去
     if (running) save();
   });
 

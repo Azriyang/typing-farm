@@ -1117,3 +1117,46 @@ html, body {
   border-color: var(--gold);
 }
 .ai-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #7a9a4e; }
+/* ---- 存档面板 ---- */
+.save-stats {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0;
+}
+.save-stats .ss-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 6px;
+  background: #fffdf6;
+  border: 2px solid var(--paper-line);
+  border-radius: 9px;
+}
+.save-stats .ss-item .k { font-size: 11px; color: var(--ink-soft); }
+.save-stats .ss-item b { font-size: 17px; color: #4a3320; }
+
+.save-note {
+  padding: 10px 13px;
+  margin: 10px 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #5a4530;
+  background: #fdf8ec;
+  border: 2px solid #e0cda8;
+  border-radius: 9px;
+}
+.save-note b { color: #8a5a2b; }
+
+.save-warn {
+  padding: 11px 14px;
+  margin: 10px 0;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #8a3a2e;
+  background: #fdf0ee;
+  border: 2px solid #e8b4ac;
+  border-radius: 9px;
+}
+.save-warn b { color: #b03a2e; }

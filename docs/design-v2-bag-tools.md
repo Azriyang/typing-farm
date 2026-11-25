@@ -2438,3 +2438,121 @@ SMOKE_PASS
 | 关掉开关 | 立刻回到预置台词，缓存清空 |
 
 **任何时候游戏都完整可玩。** 这决定了它不会变成"必须联网才能玩"的负资产。
+
+## v4.17 存档导出/导入 + GitHub Pages 部署（已实现）
+
+用户要部署网页版给朋友试玩，第一个问题是「存档怎么办」。
+
+### 问题：网页版存档在玩家自己浏览器里
+
+三个存储 key，全走 `platform.ts` 的 storage 接缝：
+
+| key | 内容 |
+| --- | --- |
+| `typing-farm-save-v1` | 主进度 |
+| `typing-farm-learning-v1` | 学习进度 |
+| `typing-farm-ai-lines-v1` | AI 台词缓存（每天重生成，不需要迁移） |
+
+浏览器下就是 `localStorage`，**按域名隔离**。这带来五个坑：
+
+1. 换浏览器 / 设备 / 无痕模式 → 读不到
+2. 清浏览器数据 → 丢失
+3. **Safari / iOS 七天没访问可能被系统清掉**（ITP）
+4. 换域名 → origin 变了，老档读不到
+5. **开发者看不到玩家的存档**，出 bug 只能靠描述
+
+第 5 条对试玩期最致命。
+
+### 方案取舍
+
+| 方案 | 成本 | 解决问题 |
+| --- | --- | --- |
+| **导出/导入文件**（选这个） | 小时级，纯前端 | 备份、换设备、把档发给开发者 |
+| 轻后端（Worker + KV 存档码） | 天级，要防刷和隐私说明 | 跨设备自动同步 |
+| 账号系统 | 周级 | 不值得这个体量 |
+
+先做导出/导入：它同时解决"丢档"和"看不到朋友存档"两个问题，而且导出的 JSON 以后可以直接喂给后端方案。
+
+### 格式设计：值原样存字符串
+
+```json
+{
+  "format": "typing-farm-save",
+  "formatVersion": 1,
+  "gameVersion": "0.1.0",
+  "exportedAt": "...",
+  "keys": { "typing-farm-save-v1": "<原始 JSON 字符串>", ... }
+}
+```
+
+关键点是 `keys` 的值存的是**原始字符串**而不是解析后的对象。这样导入时不需要理解内容结构——游戏自己的 `normalizeState()` 会处理版本迁移，存档格式升级不会把导入逻辑搞复杂。
+
+### 导入的三层校验
+
+1. **格式层**：`format` 必须匹配、`formatVersion` 不能更高、`keys` 存在、主存档存在
+2. **内容层**：主存档必须能 `JSON.parse`，且 `version` 是数字、`plots` 是数组（说明确实是这个游戏的档）
+3. **白名单**：只写 `typing-farm-save-v1` / `typing-farm-learning-v1`，文件里多出来的 key 一律忽略并提示
+
+实测八种无效输入都能给出**具体**原因，而不是笼统的"导入失败"：
+
+| 输入 | 提示 |
+| --- | --- |
+| 空字符串 | 文件不是合法的 JSON |
+| 非 JSON | 文件不是合法的 JSON |
+| 别的游戏的档 | 这不是本游戏的存档文件 |
+| formatVersion 99 | 存档格式版本太新，请更新游戏 |
+| 没有 keys | 存档里没有数据 |
+| 没有主存档 | 存档缺少主进度数据 |
+| 主存档不是 JSON | 主进度数据无法解析 |
+| 主存档缺字段 | 主进度数据不完整，可能已损坏 |
+
+### 一个被测试抓出来的严重 bug
+
+导入成功后我用 `location.reload()` 重新加载（比手工同步 state / 学习进度 / 地形省事得多）。结果导入的档**被还原成了导入前的旧档**。
+
+原因在 `boot()` 里：
+
+```ts
+window.addEventListener('beforeunload', () => { if (running) save(); });
+```
+
+重载触发 `beforeunload`，此刻 `running` 还是 `true`、内存里的 `state` 还是**旧状态**，于是自动存档把刚写进 localStorage 的新档覆盖掉了。
+
+修法：导入成功后先把 `running = false`，再重载。
+
+```ts
+running = false;   // 关掉自动存档，否则 beforeunload 会拿旧状态覆盖刚导入的档
+window.setTimeout(() => window.location.reload(), 700);
+```
+
+**这个 bug 靠读代码很难发现**——两处逻辑各自都对，只有"导入 → 重载"这个组合才出问题。是端到端跑了一遍才发现。
+
+### 另外两处顺手修的问题
+
+1. **刚开局没存过档就点导出**会提示"还没有存档"——在 `startGame()` 末尾补了一次 `save()`
+2. **面板摘要读的是 storage 而不是内存**，会和实际进度不一致——改成直接用 `state.day` / `state.coins` / `learnStats().mastered`
+
+### GitHub Pages 部署
+
+`.github/workflows/deploy.yml`：推 main 自动构建并发布。
+
+几个细节：
+
+- `corepack enable` + `packageManager` 字段锁 pnpm 版本，避免 CI 与本地版本不一致导致 lockfile 解析问题
+- `ELECTRON_SKIP_BINARY_DOWNLOAD=1`：网页版不需要 Electron 二进制，省 110MB 下载
+- `base: './'`（vite 配置里本来就有）保证在 `/typing-farm/` 子路径下资源能解析
+- 不需要 SPA 路由回退，整个游戏就是单个 HTML
+
+**前置条件**：仓库 Settings → Pages → Source 选「GitHub Actions」，这个只能在网页上点。
+
+### 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| 打包 | 20.7KB JSON，含主进度，格式字段正确 |
+| 八种无效输入 | 全部被拒且提示具体原因 |
+| 往返导入 | 111G/第3天 → 改 999G/第20天 → 导入还原为 111G/第3天 |
+| 夹带私货 | 额外 key 被忽略，提示「1 项不认识的数据，已忽略」 |
+| 导出下载 | 文件名 `typing-farm-save-20261125-1957.json`，blob URL |
+| 完整交互 | 选文件 → 预览进度 → 确认 → 写入 → 重载 → 继续存档读到 12 天/8888G |
+| 无效文件 UI | 面板内提示「这个文件不能用：这不是本游戏的存档文件」 |

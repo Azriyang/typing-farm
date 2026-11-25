@@ -28,7 +28,9 @@ export const MASTER_DAYS = 3;
 /** 每天最多引入几个新词 */
 export const DAILY_NEW_LIMIT = 12;
 
-const KEY = 'typing-farm-learning-v1';
+/** 学习进度的存储 key（导出存档时要用） */
+export const LEARNING_KEY = 'typing-farm-learning-v1';
+const KEY = LEARNING_KEY;
 
 let progress: Record<string, WordProgress> = {};
 /** 今天已经引入的新词数 */

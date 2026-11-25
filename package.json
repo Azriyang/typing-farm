@@ -6,6 +6,7 @@
   "description": "牧场打字物语 — 打字 × 牧场经营",
   "license": "AGPL-3.0-or-later",
   "author": "Azriyang",
+  "packageManager": "pnpm@11.28.5",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Azriyang/typing-farm.git"

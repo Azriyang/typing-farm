@@ -2759,131 +2759,241 @@ function part(
   }
 }
 
-function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, moving: boolean, nowMs: number) {
-  const bob = moving ? Math.sin(walkT * 12) * 1.2 : 0;
-  const swing = moving ? Math.sin(walkT * 12) : 0;
-  // 站立时轻微呼吸：身体上下浮 0.5px
-  const breath = moving ? 0 : Math.sin(nowMs / 900) * 0.5;
-  // 每隔约 3.6 秒眨一次眼
-  const blink = (nowMs % 3600) < 130;
+/* ============================================================
+   人物：玩家与村民共用一套画法
+   ------------------------------------------------------------
+   原来的角色约 49px 高，而格子是 48px —— 差不多"一格一个人"，
+   所以地图显得大、人显得小。这里放大到约 70px（1.45 格），
+   并补上细节：头发受光、衣领、背带扣、口袋、裤脚卷边、鞋底、
+   眨眼、腮红、呼吸起伏、两帧走路。
+   坐标约定：脚底在 (0,0)，向上为负。
+   ============================================================ */
 
-  softShadow(c, px, py + 1, 9, 3.4, 0.3);
+export interface CharLook {
+  shirt: string;
+  shirtLine: string;
+  shirtHi: string;
+  pants: string;
+  pantsHi: string;
+  hair: string;
+  hairHi: string;
+  /** 草帽（只有农夫戴） */
+  hat?: { base: string; hi: string; line: string; ribbon: string; ribbonHi: string };
+  /** 背带裤（农夫） */
+  overall?: string;
+  overallHi?: string;
+  /** 围裙（部分村民） */
+  apron?: string;
+}
 
-  c.save();
-  c.translate(Math.round(px), Math.round(py + bob + breath));
+function drawCharacter(
+  c: Ctx, px: number, py: number, dir: Dir,
+  swingPhase: number, moving: boolean, clock: number, look: CharLook
+) {
+  const swing = moving ? Math.sin(swingPhase) : 0;
+  const bob = moving ? -Math.abs(Math.cos(swingPhase)) * 1.8 : Math.sin(clock / 950) * 0.6;
+  const blink = (clock % 3800) < 120;
 
   const skin = MAT.skin.base;
   const skinHi = MAT.skin.hi;
   const skinLine = MAT.skin.line;
-  const shirt = CHAR.farmerShirt.base;
-  const shirtHi = CHAR.farmerShirt.hi;
-  const shirtLine = CHAR.farmerShirt.line;
-  const overall = CHAR.farmerOverall.base;
-  const overallHi = CHAR.farmerOverall.hi;
-  const hat = CHAR.hat.base;
-  const hatHi = CHAR.hat.hi;
-  const hatLine = CHAR.hat.line;
   const boot = MAT.ink.base;
 
-  // 腿（不描边，避免小尺寸糊成一团）
-  c.fillStyle = overall;
-  c.fillRect(-7, -12 + swing * 1.5, 6, 12);
-  c.fillRect(1, -12 - swing * 1.5, 6, 12);
-  c.fillStyle = overallHi;
-  c.fillRect(-7, -12 + swing * 1.5, 2, 10);
-  c.fillStyle = boot;
-  c.fillRect(-8, -4 + swing * 1.5, 7, 4);
-  c.fillRect(0, -4 - swing * 1.5, 7, 4);
+  softShadow(c, px, py + 1, 13, 4.4, 0.3);
 
-  // 身体（白衬衫 + 蓝背带裤）
-  part(c, -9, -26, 18, 15, shirt, shirtLine, shirtHi);
-  c.fillStyle = overall;
-  c.fillRect(-8, -20, 16, 9);
-  c.fillStyle = overallHi;
-  c.fillRect(-8, -20, 16, 2);
-  // 背带
-  c.fillStyle = overall;
-  c.fillRect(-8, -26, 4, 8);
-  c.fillRect(4, -26, 4, 8);
+  c.save();
+  c.translate(Math.round(px), Math.round(py + bob));
 
-  // 手臂
-  const armY1 = -24 + swing * 2;
-  const armY2 = -24 - swing * 2;
-  if (dir === 'left') {
-    part(c, -13, armY1, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin;
-    c.fillRect(-13, armY1 + 10, 5, 4);
-  } else if (dir === 'right') {
-    part(c, 8, armY2, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin;
-    c.fillRect(8, armY2 + 10, 5, 4);
-  } else {
-    part(c, -13, armY1, 5, 11, shirt, shirtLine);
-    part(c, 8, armY2, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin;
-    c.fillRect(-13, armY1 + 10, 5, 4);
-    c.fillRect(8, armY2 + 10, 5, 4);
+  /* ---------- 腿 ---------- */
+  const legY = -22;
+  const legSwing = swing * 2.4;
+  for (const [lx, sw] of [[-10, legSwing], [2, -legSwing]] as Array<[number, number]>) {
+    c.fillStyle = shift(look.pants, -60);
+    c.fillRect(lx - 1, legY, 10, 23);
+    c.fillStyle = look.pants;
+    c.fillRect(lx, legY + 1, 8, 22);
+    c.fillStyle = look.pantsHi;
+    c.fillRect(lx, legY + 1, 2, 20);
+    // 裤脚卷边
+    c.fillStyle = shift(look.pants, -24);
+    c.fillRect(lx, legY + 17, 8, 3);
+    // 鞋
+    c.fillStyle = boot;
+    c.fillRect(lx - 1, -6 + sw, 10, 6);
+    c.fillStyle = shift(boot, 34);
+    c.fillRect(lx - 1, -6 + sw, 10, 2);
+    c.fillStyle = '#2a2420';
+    c.fillRect(lx - 1, -1 + sw, 10, 1.5);
   }
 
-  // 头
-  part(c, -8, -40, 16, 15, skin, skinLine, skinHi);
-  if (dir !== 'up') {
-    // 头发（刘海）
-    c.fillStyle = '#7a5230';
-    c.fillRect(-8, -40, 16, 4);
-    c.fillStyle = '#8f6438';
-    c.fillRect(-8, -40, 16, 1);
-    // 眼睛（眨眼时压成一条线）
-    c.fillStyle = '#3d2b1f';
+  /* ---------- 躯干 ---------- */
+  const torsoY = -44;
+  const torsoH = 22;
+  part(c, -13, torsoY, 26, torsoH, look.shirt, look.shirtLine, look.shirtHi);
+
+  // 衣领
+  c.fillStyle = shift(look.shirt, 40);
+  c.fillRect(-6, torsoY + 1, 12, 2);
+  c.fillStyle = shift(look.shirt, -40);
+  c.fillRect(-6, torsoY + 3, 12, 1);
+
+  // 背带裤
+  if (look.overall) {
+    c.fillStyle = look.overall;
+    c.fillRect(-12, torsoY + 10, 24, torsoH - 10);
+    c.fillStyle = look.overallHi ?? shift(look.overall, 26);
+    c.fillRect(-12, torsoY + 10, 24, 2);
+    // 两条背带 + 铜扣
+    c.fillStyle = look.overall;
+    c.fillRect(-11, torsoY + 1, 4, 10);
+    c.fillRect(7, torsoY + 1, 4, 10);
+    c.fillStyle = '#d8c060';
+    c.fillRect(-11, torsoY + 9, 4, 3);
+    c.fillRect(7, torsoY + 9, 4, 3);
+    // 口袋
+    c.fillStyle = shift(look.overall, -20);
+    c.fillRect(-7, torsoY + 15, 14, 6);
+    c.fillStyle = shift(look.overall, 16);
+    c.fillRect(-7, torsoY + 15, 14, 1);
+  } else if (look.apron) {
+    c.fillStyle = look.apron;
+    c.fillRect(-9, torsoY + 14, 18, torsoH - 14);
+    c.fillStyle = shift(look.apron, 22);
+    c.fillRect(-9, torsoY + 14, 18, 2);
+  }
+
+  /* ---------- 手臂 ---------- */
+  const armY = -40;
+  const a1 = swing * 3;
+  const a2 = -swing * 3;
+  const drawArm = (ax: number, dy: number) => {
+    part(c, ax, armY + dy, 7, 16, look.shirt, look.shirtLine);
+    c.fillStyle = shift(look.shirt, -34);
+    c.fillRect(ax, armY + dy + 12, 7, 2);
+    c.fillStyle = skin;
+    c.fillRect(ax + 1, armY + dy + 14, 6, 5);
+    c.fillStyle = skinHi;
+    c.fillRect(ax + 1, armY + dy + 14, 6, 1);
+  };
+  if (dir === 'left') {
+    drawArm(-20, a1);
+  } else if (dir === 'right') {
+    drawArm(13, a2);
+  } else {
+    drawArm(-20, a1);
+    drawArm(13, a2);
+  }
+
+  /* ---------- 脖子 ---------- */
+  c.fillStyle = shift(skin, -34);
+  c.fillRect(-4, torsoY - 3, 8, 4);
+
+  /* ---------- 头 ---------- */
+  const headY = -62;
+  part(c, -10, headY, 20, 18, skin, skinLine, skinHi);
+  c.fillStyle = shift(skin, -18);
+  c.fillRect(-12, headY + 8, 2, 5);
+  c.fillRect(10, headY + 8, 2, 5);
+
+  if (dir === 'up') {
+    c.fillStyle = look.hair;
+    c.fillRect(-10, headY, 20, 18);
+    c.fillStyle = look.hairHi;
+    c.fillRect(-10, headY, 20, 3);
+    c.fillStyle = shift(look.hair, 16);
+    c.fillRect(-6, headY + 2, 5, 1);
+  } else {
+    // 额发 + 两鬓
+    c.fillStyle = look.hair;
+    c.fillRect(-11, headY - 1, 22, 7);
+    c.fillRect(-11, headY + 5, 3, 9);
+    c.fillRect(8, headY + 5, 3, 9);
+    c.fillStyle = look.hairHi;
+    c.fillRect(-11, headY - 1, 22, 2);
+    c.fillStyle = shift(look.hair, 18);
+    c.fillRect(-6, headY + 1, 6, 1);
+    c.fillRect(2, headY + 2, 4, 1);
+    c.fillStyle = look.hair;
+    c.fillRect(-3, headY + 6, 5, 3);
+
+    const eyeY = headY + 9;
     if (dir === 'down') {
       if (blink) {
-        c.fillRect(-5, -32, 3, 1);
-        c.fillRect(3, -32, 3, 1);
+        c.fillStyle = shift(skin, -60);
+        c.fillRect(-6, eyeY + 1, 4, 1);
+        c.fillRect(3, eyeY + 1, 4, 1);
       } else {
-        c.fillRect(-5, -33, 3, 3);
-        c.fillRect(3, -33, 3, 3);
-        // 眼里高光
-        c.fillStyle = 'rgba(255,255,255,.75)';
-        c.fillRect(-5, -33, 1, 1);
-        c.fillRect(3, -33, 1, 1);
-        c.fillStyle = '#e8a48a';
-        c.fillRect(-1, -30, 3, 2);
+        c.fillStyle = '#fdfaf4';
+        c.fillRect(-6, eyeY, 4, 4);
+        c.fillRect(3, eyeY, 4, 4);
+        c.fillStyle = '#3d2b1f';
+        c.fillRect(-5, eyeY + 1, 3, 3);
+        c.fillRect(4, eyeY + 1, 3, 3);
+        c.fillStyle = 'rgba(255,255,255,.9)';
+        c.fillRect(-5, eyeY + 1, 1, 1);
+        c.fillRect(4, eyeY + 1, 1, 1);
       }
+      c.fillStyle = 'rgba(232,140,120,.4)';
+      c.fillRect(-9, eyeY + 4, 3, 2);
+      c.fillRect(6, eyeY + 4, 3, 2);
+      c.fillStyle = shift(skin, -52);
+      c.fillRect(-1, eyeY + 6, 3, 1);
     } else if (dir === 'left') {
-      c.fillRect(-6, blink ? -32 : -33, 3, blink ? 1 : 3);
+      c.fillStyle = '#3d2b1f';
+      c.fillRect(-7, eyeY + 1, blink ? 4 : 3, blink ? 1 : 3);
+      c.fillStyle = shift(skin, -30);
+      c.fillRect(-11, eyeY + 5, 2, 2);
     } else {
-      c.fillRect(3, blink ? -32 : -33, 3, blink ? 1 : 3);
+      c.fillStyle = '#3d2b1f';
+      c.fillRect(4, eyeY + 1, blink ? 4 : 3, blink ? 1 : 3);
+      c.fillStyle = shift(skin, -30);
+      c.fillRect(9, eyeY + 5, 2, 2);
     }
-  } else {
-    // 背面：整片头发
-    c.fillStyle = '#7a5230';
-    c.fillRect(-8, -40, 16, 15);
-    c.fillStyle = '#8f6438';
-    c.fillRect(-8, -40, 16, 1);
   }
 
-  // 草帽（帽檐 + 帽冠 + 缎带）
-  c.fillStyle = hatLine;
-  c.fillRect(-13, -43, 26, 6);
-  c.fillStyle = hat;
-  c.fillRect(-12, -42, 24, 4);
-  c.fillStyle = hatHi;
-  c.fillRect(-12, -42, 24, 1);
-
-  c.fillStyle = hatLine;
-  c.fillRect(-9, -49, 18, 8);
-  c.fillStyle = hat;
-  c.fillRect(-8, -48, 16, 7);
-  c.fillStyle = hatHi;
-  c.fillRect(-8, -48, 6, 2);
-
-  // 缎带
-  c.fillStyle = '#c4553f';
-  c.fillRect(-8, -45, 16, 2);
-  c.fillStyle = '#d9755c';
-  c.fillRect(-8, -45, 16, 1);
+  /* ---------- 草帽 ---------- */
+  if (look.hat) {
+    const h = look.hat;
+    c.fillStyle = h.line;
+    c.fillRect(-17, headY - 5, 34, 7);
+    c.fillStyle = h.base;
+    c.fillRect(-16, headY - 4, 32, 5);
+    c.fillStyle = h.hi;
+    c.fillRect(-16, headY - 4, 32, 2);
+    c.fillStyle = h.line;
+    c.fillRect(-11, headY - 15, 22, 11);
+    c.fillStyle = h.base;
+    c.fillRect(-10, headY - 14, 20, 10);
+    c.fillStyle = h.hi;
+    c.fillRect(-10, headY - 14, 8, 3);
+    c.fillStyle = h.ribbon;
+    c.fillRect(-10, headY - 8, 20, 3);
+    c.fillStyle = h.ribbonHi;
+    c.fillRect(-10, headY - 8, 20, 1);
+  }
 
   c.restore();
+}
+
+function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, moving: boolean, nowMs: number) {
+  drawCharacter(c, px, py, dir, walkT * 11, moving, nowMs, {
+    shirt: CHAR.farmerShirt.base,
+    shirtLine: CHAR.farmerShirt.line,
+    shirtHi: CHAR.farmerShirt.hi,
+    pants: CHAR.farmerOverall.base,
+    pantsHi: CHAR.farmerOverall.hi,
+    hair: '#7a5230',
+    hairHi: '#8f6438',
+    overall: CHAR.farmerOverall.base,
+    overallHi: CHAR.farmerOverall.hi,
+    hat: {
+      base: CHAR.hat.base,
+      hi: CHAR.hat.hi,
+      line: CHAR.hat.line,
+      ribbon: '#c4553f',
+      ribbonHi: '#d9755c'
+    }
+  });
 }
 
 /* ---------------- 村民 ---------------- */
@@ -2891,90 +3001,19 @@ function drawFarmer(c: Ctx, px: number, py: number, dir: Dir, walkT: number, mov
 function drawVillager(c: Ctx, v: Villager, nowMs: number) {
   const def = VILLAGER_DEFS[v.id];
   const shirt = def?.shirt ?? '#8a8a8a';
-  const bob = v.moving ? Math.sin(nowMs / 120 + v.x) * 1.2 : 0;
-  const swing = v.moving ? Math.sin(nowMs / 120 + v.x) : 0;
-
-  softShadow(c, v.x, v.y + 1, 9, 3.4, 0.3);
-
-  c.save();
-  c.translate(Math.round(v.x), Math.round(v.y + bob));
-
-  const skin = MAT.skin.base;
-  const skinHi = MAT.skin.hi;
-  const skinLine = MAT.skin.line;
-  const pants = '#6b5a4c';
-  const hair = '#4a3a2e';
-  const hairHi = '#6b5544';
-  const boot = MAT.ink.base;
-  const shirtHi = shift(shirt, 26);
-  const shirtLine = shift(shirt, -52);
-
-  // 腿（不描边）
-  c.fillStyle = pants;
-  c.fillRect(-7, -12 + swing * 1.5, 6, 12);
-  c.fillRect(1, -12 - swing * 1.5, 6, 12);
-  c.fillStyle = shift(pants, 18);
-  c.fillRect(-7, -12 + swing * 1.5, 2, 10);
-  c.fillStyle = boot;
-  c.fillRect(-8, -4 + swing * 1.5, 7, 4);
-  c.fillRect(0, -4 - swing * 1.5, 7, 4);
-
-  // 身体（描边 + 本色 + 受光）
-  part(c, -9, -26, 18, 15, shirt, shirtLine, shirtHi);
-  // 衣摆暗部
-  c.fillStyle = shift(shirt, -22);
-  c.fillRect(-8, -13, 16, 2);
-
-  // 手臂
-  const ay1 = -24 + swing * 2;
-  const ay2 = -24 - swing * 2;
-  if (v.dir === 'left') {
-    part(c, -13, ay1, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin; c.fillRect(-13, ay1 + 10, 5, 4);
-  } else if (v.dir === 'right') {
-    part(c, 8, ay2, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin; c.fillRect(8, ay2 + 10, 5, 4);
-  } else {
-    part(c, -13, ay1, 5, 11, shirt, shirtLine);
-    part(c, 8, ay2, 5, 11, shirt, shirtLine);
-    c.fillStyle = skin;
-    c.fillRect(-13, ay1 + 10, 5, 4);
-    c.fillRect(8, ay2 + 10, 5, 4);
-  }
-
-  // 头（描边 + 受光）
-  part(c, -8, -40, 16, 15, skin, skinLine, skinHi);
-
-  // 头发
-  if (v.dir !== 'up') {
-    c.fillStyle = hair;
-    c.fillRect(-9, -43, 18, 6);
-    c.fillRect(-9, -40, 3, 8);
-    c.fillRect(6, -40, 3, 8);
-    c.fillStyle = hairHi;
-    c.fillRect(-9, -43, 18, 2);
-  } else {
-    c.fillStyle = hair;
-    c.fillRect(-9, -43, 18, 18);
-    c.fillStyle = hairHi;
-    c.fillRect(-9, -43, 18, 2);
-  }
-
-  // 眼睛（带高光）
-  if (v.dir !== 'up') {
-    c.fillStyle = '#3d2b1f';
-    if (v.dir === 'down') {
-      c.fillRect(-5, -33, 3, 3); c.fillRect(3, -33, 3, 3);
-      c.fillStyle = 'rgba(255,255,255,.8)';
-      c.fillRect(-5, -33, 1, 1); c.fillRect(3, -33, 1, 1);
-    } else if (v.dir === 'left') {
-      c.fillRect(-6, -33, 3, 3);
-    } else {
-      c.fillRect(3, -33, 3, 3);
-    }
-  }
-
-  c.restore();
+  // 每个人走路相位错开，避免整齐划一
+  const phase = (v.moving ? nowMs / 105 : 0) + v.x * 0.05;
+  drawCharacter(c, v.x, v.y, v.dir, phase, v.moving, nowMs + v.x * 40, {
+    shirt,
+    shirtLine: shift(shirt, -52),
+    shirtHi: shift(shirt, 26),
+    pants: '#6b5a4c',
+    pantsHi: '#8a7768',
+    hair: '#4a3a2e',
+    hairHi: '#6b5544',
+    // 老板娘系围裙
+    apron: v.id === 'tavern' ? '#d8cbb0' : undefined
+  });
 
   // 头顶名牌（靠近时才显示，避免杂乱）
   if (def) {
@@ -2983,22 +3022,22 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
     const w = c.measureText(def.name).width + 12;
     // 描边底 + 填充
     c.fillStyle = 'rgba(45,32,22,.55)';
-    c.fillRect(v.x - w / 2 - 1, v.y - 59, w + 2, 16);
+    c.fillRect(v.x - w / 2 - 1, v.y - 77, w + 2, 16);
     c.fillStyle = 'rgba(245,235,215,.94)';
-    c.fillRect(v.x - w / 2, v.y - 58, w, 14);
+    c.fillRect(v.x - w / 2, v.y - 76, w, 14);
     c.fillStyle = '#4a3320';
-    c.fillText(def.name, v.x, v.y - 48);
+    c.fillText(def.name, v.x, v.y - 66);
 
     // 正在做的事：让「他有自己的生活」看得见
     if (v.doing) {
       c.font = '10px "PingFang SC",sans-serif';
       const dw = c.measureText(v.doing).width + 10;
       c.fillStyle = 'rgba(45,32,22,.42)';
-      c.fillRect(v.x - dw / 2 - 1, v.y - 73, dw + 2, 13);
+      c.fillRect(v.x - dw / 2 - 1, v.y - 91, dw + 2, 13);
       c.fillStyle = 'rgba(230,220,200,.9)';
-      c.fillRect(v.x - dw / 2, v.y - 72, dw, 11);
+      c.fillRect(v.x - dw / 2, v.y - 90, dw, 11);
       c.fillStyle = '#5a4530';
-      c.fillText(v.doing, v.x, v.y - 63.5);
+      c.fillText(v.doing, v.x, v.y - 81.5);
     }
     c.textAlign = 'left';
   }

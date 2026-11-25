@@ -1427,7 +1427,7 @@ function drawShopSign(c: Ctx, x: number, w: number, y: number, text: string, bg:
 }
 
 /** 一栋上世纪风格的房子 */
-function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: number, h: number, nowMs: number) {
+function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: number, h: number) {
   const style = TOWN_BUILD_STYLE[b.kind] ?? TOWN_BUILD_STYLE.house;
   const mat = TOWN_MATERIAL[style.wall];
   // 民宅统一成青瓦（保留一点原本色相的变化，年代感更准）
@@ -1565,16 +1565,16 @@ function drawPeriodBuilding(c: Ctx, b: TownBuilding, x: number, y: number, w: nu
   }
 
   // ── 各店特征 ──
-  drawShopExtras(c, b, x, y, w, wallTop, plinthY, nowMs, style);
+  drawShopExtras(c, b, x, y, w, wallTop, plinthY, style);
 }
 
 /** 各店铺的性格化细节 */
 function drawShopExtras(
   c: Ctx, b: TownBuilding, x: number, y: number, w: number,
-  wallTop: number, plinthY: number, nowMs: number, style: TownBuildStyle
+  wallTop: number, plinthY: number, style: TownBuildStyle
 ) {
   if (b.kind === 'smith') {
-    // 砖砌烟囱 + 烟（随时间飘）
+    // 砖砌烟囱（烟在动态层画）
     const chX = x + w - 26;
     c.fillStyle = '#6b5548';
     c.fillRect(chX, y - 10, 12, 22);
@@ -1583,14 +1583,6 @@ function drawShopExtras(
     c.fillStyle = 'rgba(0,0,0,.22)';
     c.fillRect(chX + 2, y - 5, 8, 1);
     c.fillRect(chX + 2, y - 1, 8, 1);
-    // 烟
-    for (let i = 0; i < 3; i++) {
-      const t = (nowMs / 1400 + i * 0.33) % 1;
-      const sx = chX + 6 + Math.sin(t * Math.PI * 2 + i) * 7;
-      const sy = y - 14 - t * 26;
-      c.fillStyle = `rgba(190,190,185,${0.42 * (1 - t)})`;
-      c.beginPath(); c.arc(sx, sy, 3.5 + t * 3.5, 0, Math.PI * 2); c.fill();
-    }
     // 门口堆的煤 / 铁料
     c.fillStyle = '#3a3632';
     c.beginPath(); c.ellipse(x + 16, plinthY + 2, 9, 4, 0, 0, Math.PI * 2); c.fill();
@@ -1683,17 +1675,17 @@ function drawShopExtras(
   }
 }
 
-function drawTownBuildings(c: Ctx, nowMs = 0) {
+function drawTownBuildings(c: Ctx) {
   for (const b of TOWN_BUILDINGS) {
     const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE, h = b.h * TILE;
     if (b.kind === 'tower') { drawTower(c, x, y, w, h); continue; }
-    drawPeriodBuilding(c, b, x, y, w, h, nowMs);
+    drawPeriodBuilding(c, b, x, y, w, h);
   }
-  drawFountain(c, nowMs);
+  drawFountain(c);
   drawWell(c);
 }
 
-/** 小镇水井：石台 + 井口 + 辘轳架 */
+/** 小镇水井：石台 + 井口 + 辘轳架（绳与桶在动态层，会晃） */
 function drawWell(c: Ctx) {
   const wl = TOWN_WELL;
   const x = wl.x * TILE, y = wl.y * TILE;
@@ -1720,7 +1712,7 @@ function drawWell(c: Ctx) {
   c.strokeStyle = '#7a7468'; c.lineWidth = 3;
   c.beginPath(); c.ellipse(cx, cy + 5, 30, 15, 0, 0, Math.PI * 2); c.stroke();
 
-  // 木架（两根柱子 + 横梁 + 绳子 + 桶）
+  // 木架（两根柱子 + 横梁）
   c.fillStyle = '#6b4a2e';
   c.fillRect(cx - 30, y - 22, 5, 34);
   c.fillRect(cx + 25, y - 22, 5, 34);
@@ -1728,16 +1720,6 @@ function drawWell(c: Ctx) {
   c.fillRect(cx - 32, y - 26, 64, 6);
   c.fillStyle = '#a97c4f';
   c.fillRect(cx - 32, y - 26, 64, 2);
-  // 绳子
-  c.strokeStyle = '#c9b896'; c.lineWidth = 1.5;
-  c.beginPath(); c.moveTo(cx, y - 20); c.lineTo(cx, cy - 6); c.stroke();
-  // 小桶
-  c.fillStyle = '#7a5434';
-  c.fillRect(cx - 7, cy - 8, 14, 12);
-  c.fillStyle = '#9a7248';
-  c.fillRect(cx - 7, cy - 8, 14, 2);
-  c.fillStyle = '#5a3c22';
-  c.fillRect(cx - 7, cy - 3, 14, 1);
 }
 
 
@@ -1785,8 +1767,8 @@ function drawTower(c: Ctx, x: number, y: number, w: number, h: number) {
   c.fillRect(cx - 9, y + h - 26, 18, 22);
 }
 
-/** 广场喷泉 */
-function drawFountain(c: Ctx, nowMs: number) {
+/** 广场喷泉（静态部分：池沿、水面、中央石柱；涟漪与水花在动态层） */
+function drawFountain(c: Ctx) {
   const f = TOWN_FOUNTAIN;
   const x = f.x * TILE, y = f.y * TILE, w = f.w * TILE, h = f.h * TILE;
   const cx = x + w / 2;
@@ -1799,23 +1781,129 @@ function drawFountain(c: Ctx, nowMs: number) {
   // 水面
   c.fillStyle = '#72c6e0';
   c.beginPath(); c.ellipse(cx, y + h * 0.58, w * 0.34, h * 0.24, 0, 0, Math.PI * 2); c.fill();
-  // 水波
-  const t = Math.sin(nowMs / 600) * 0.5 + 0.5;
-  c.strokeStyle = `rgba(255,255,255,${0.3 + t * 0.3})`;
-  c.lineWidth = 1.5;
-  for (let i = 0; i < 3; i++) {
-    const rr = 8 + i * 9 + t * 3;
-    c.beginPath(); c.ellipse(cx, y + h * 0.58, rr, rr * 0.7, 0, 0, Math.PI * 2); c.stroke();
-  }
   // 中央小柱
   c.fillStyle = '#a8a39a';
   c.fillRect(cx - 5, y + h * 0.28, 10, h * 0.32);
   c.fillStyle = '#c9c4ba';
   c.fillRect(cx - 3, y + h * 0.28, 4, h * 0.30);
-  // 水柱
-  c.fillStyle = 'rgba(180,230,245,.7)';
-  c.fillRect(cx - 2, y + h * 0.10, 4, h * 0.22);
-  c.beginPath(); c.arc(cx, y + h * 0.10, 3.5, 0, Math.PI * 2); c.fill();
+}
+
+/* ---------------- 小镇里"会动"的东西 ---------------- */
+
+/**
+ * 烟、灯笼、井水、喷泉水花。
+ * 这些必须在**动态层**逐帧画——底图只在换季/换场景时重绘一次。
+ */
+function drawTownAnimated(c: Ctx, nowMs: number) {
+  // ── 铁匠铺烟囱的烟：4 团错开上升、摆动、扩散、变淡 ──
+  for (const b of TOWN_BUILDINGS) {
+    if (b.kind !== 'smith') continue;
+    const x = b.x * TILE, y = b.y * TILE, w = b.w * TILE;
+    const chX = x + w - 26;
+    for (let i = 0; i < 4; i++) {
+      const t = ((nowMs / 2600) + i * 0.25) % 1;
+      const sway = Math.sin(t * Math.PI * 2.2 + i * 1.7) * (2 + t * 10);
+      const sx = chX + 6 + sway;
+      const sy = y - 14 - t * 48;
+      const rr = 3 + t * 7;
+      const a = 0.42 * (1 - t) * (1 - t);
+      c.fillStyle = `rgba(198,198,192,${a})`;
+      c.beginPath(); c.arc(sx, sy, rr, 0, Math.PI * 2); c.fill();
+    }
+  }
+
+  // ── 酒馆灯笼的光晕：双频正弦模拟"跳动" ──
+  for (const b of TOWN_BUILDINGS) {
+    if (b.kind !== 'tavern') continue;
+    const x = b.x * TILE, y = b.y * TILE, h = b.h * TILE;
+    const wallTop = y + Math.round(h * 0.52);
+    const lx = x + 15, ly = wallTop + 15;
+    const flick = 0.5 + 0.5 * Math.sin(nowMs / 163) * Math.sin(nowMs / 71 + 1.3);
+    const g = c.createRadialGradient(lx, ly, 1, lx, ly, 24);
+    g.addColorStop(0, `rgba(255,198,104,${0.30 + flick * 0.26})`);
+    g.addColorStop(0.55, `rgba(255,180,90,${0.10 + flick * 0.10})`);
+    g.addColorStop(1, 'rgba(255,180,90,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(lx, ly, 24, 0, Math.PI * 2); c.fill();
+    // 灯芯
+    c.fillStyle = `rgba(255,240,190,${0.45 + flick * 0.5})`;
+    c.beginPath(); c.ellipse(lx, ly, 2.3, 3.4, 0, 0, Math.PI * 2); c.fill();
+  }
+
+  // ── 水井：水面微光 + 绳与桶轻轻摆 ──
+  {
+    const wl = TOWN_WELL;
+    const x = wl.x * TILE, y = wl.y * TILE;
+    const cx = x + wl.w * TILE / 2;
+    const cy = y + wl.h * TILE / 2;
+
+    // 井水的反光（井口里一圈）
+    const glint = (Math.sin(nowMs / 900) + 1) / 2;
+    c.strokeStyle = `rgba(150,200,232,${0.20 + glint * 0.32})`;
+    c.lineWidth = 1.4;
+    c.beginPath();
+    c.ellipse(cx, cy + 4, 12 + glint * 4, 5.5 + glint * 2, 0, 0, Math.PI * 2);
+    c.stroke();
+
+    // 吊桶与绳（绳随桶摆）
+    const sway = Math.sin(nowMs / 1500) * 2.4;
+    const bx = cx + sway;
+    const byTop = y - 20;
+    const byBottom = cy - 8;
+    c.strokeStyle = '#c9b896'; c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(cx, byTop);
+    c.quadraticCurveTo((cx + bx) / 2, (byTop + byBottom) / 2 + 2, bx, byBottom);
+    c.stroke();
+    // 桶
+    c.fillStyle = '#7a5434';
+    c.fillRect(bx - 7, byBottom, 14, 12);
+    c.fillStyle = '#9a7248';
+    c.fillRect(bx - 7, byBottom, 14, 2);
+    c.fillStyle = '#5a3c22';
+    c.fillRect(bx - 7, byBottom + 5, 14, 1);
+    c.fillStyle = 'rgba(0,0,0,.18)';
+    c.fillRect(bx - 7, byBottom + 10, 14, 2);
+  }
+
+  // ── 广场喷泉：涟漪 + 水柱 + 溅落的水珠 ──
+  {
+    const f = TOWN_FOUNTAIN;
+    const x = f.x * TILE, y = f.y * TILE, w = f.w * TILE, h = f.h * TILE;
+    const cx = x + w / 2;
+    const wy = y + h * 0.58;
+    const t = Math.sin(nowMs / 600) * 0.5 + 0.5;
+
+    // 三道涟漪（向外扩、渐淡）
+    for (let i = 0; i < 3; i++) {
+      const phase = ((nowMs / 2200) + i / 3) % 1;
+      const rr = 9 + phase * 22;
+      c.strokeStyle = `rgba(255,255,255,${0.30 * (1 - phase)})`;
+      c.lineWidth = 1.4;
+      c.beginPath(); c.ellipse(cx, wy, rr, rr * 0.68, 0, 0, Math.PI * 2); c.stroke();
+    }
+
+    // 水柱（高度随时间微变）
+    const pulse = 0.72 + 0.28 * Math.sin(nowMs / 430);
+    const colTop = y + h * 0.10;
+    c.fillStyle = 'rgba(184,232,246,.68)';
+    c.fillRect(cx - 2, colTop, 4, h * 0.22 * pulse);
+    // 柱顶的水团
+    c.fillStyle = `rgba(210,242,252,${0.62 + t * 0.2})`;
+    c.beginPath(); c.arc(cx, colTop, 3.2 + pulse, 0, Math.PI * 2); c.fill();
+
+    // 溅落的水珠：向外抛、落下
+    for (let i = 0; i < 6; i++) {
+      const ph = ((nowMs / 1100) + i / 6) % 1;
+      const ang = (i / 6) * Math.PI * 2 + nowMs / 2600;
+      const dx = Math.cos(ang) * (5 + ph * 17);
+      const dy = -Math.sin(ph * Math.PI) * 11 + ph * 20;
+      c.fillStyle = `rgba(214,242,252,${0.55 * (1 - ph)})`;
+      c.beginPath();
+      c.arc(cx + dx, colTop + dy, 1.5, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
 }
 
 /* ---------------- 动物 ---------------- */
@@ -2025,6 +2113,8 @@ export function render(state: GameState, dt: number, nowMs: number) {
 
   // 耕地与作物（只在农场；未解锁的地块不画）
   if (!indoor) {
+    // 小镇里会动的东西（烟、灯笼、井水、喷泉）：必须在动态层，否则永远静止
+    drawTownAnimated(ctx, nowMs);
     for (let i = 0; i < state.plots.length; i++) {
       if (!areaUnlocked(plotAreaOf(i), state.farmUnlocked)) continue;
       const { tx, ty } = plotTileOf(i);

@@ -2818,18 +2818,6 @@ function fillPoly(c: Ctx, pts: Poly): void {
   c.fill();
 }
 
-/** 把多边形相对质心外扩 d 像素，用作硬边轮廓；不用 stroke() 的平滑线 */
-function expandPoly(pts: Poly, d: number): Poly {
-  let cx = 0, cy = 0;
-  for (const [x, y] of pts) { cx += x; cy += y; }
-  cx /= pts.length; cy /= pts.length;
-  return pts.map(([x, y]) => {
-    let vx = x - cx, vy = y - cy;
-    const len = Math.hypot(vx, vy) || 1;
-    return [x + (vx / len) * d, y + (vy / len) * d] as [number, number];
-  });
-}
-
 /** 切角矩形 */
 /** 上宽下窄的梯形（左右各自独立收窄） */
 function drawCharacter(
@@ -2918,13 +2906,24 @@ function drawCharacter(
     shapes.push({ pts: boxPoly(-14 * W, -50, 28 * W, 3, 2), color: look.hat.base });
   }
 
-  /* ---------- ① 硬边轮廓：外扩 1px 填充轮廓色，不用 stroke() 的平滑线 ---------- */
-  for (const s of shapes) {
-    c.fillStyle = OUTLINE;
-    fillPoly(c, expandPoly(s.pts, 1.3));
+  /* ---------- ① 整体剪影轮廓 ----------
+     先把所有形状用同一轮廓色画到离屏画布 = 它们的并集（互相覆盖，不留内部线），
+     再把并集往 8 个方向各偏移 1px 画回主画布 = 外扩 1px 的整体轮廓。
+     这样只有最外缘有轮廓线，肩-臂 / 身-裤 / 裤-靴 之间不再被逐部件描边切断。 */
+  const silW = 40, silH = 66;
+  const sx0 = -20, sy0 = -60; // 离屏覆盖 x[-20,20] y[-60,6]
+  const sil = document.createElement('canvas');
+  sil.width = silW; sil.height = silH;
+  const sc = sil.getContext('2d')!;
+  sc.translate(-sx0, -sy0);
+  sc.fillStyle = OUTLINE;
+  for (const s of shapes) fillPoly(sc, s.pts);
+  // 8 邻域偏移 = 1px 膨胀；主画布此刻原点在玩家脚底
+  for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    c.drawImage(sil, sx0 + dx, sy0 + dy);
   }
 
-  /* ---------- ② 填色 ---------- */
+  /* ---------- ② 填色：真实色覆盖内部，只留最外一圈轮廓 ---------- */
   for (const s of shapes) {
     c.fillStyle = s.color;
     fillPoly(c, s.pts);

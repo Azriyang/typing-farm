@@ -2824,13 +2824,14 @@ function drawCharacter(
   c: Ctx, px: number, py: number, dir: Dir,
   swingPhase: number, moving: boolean, clock: number, look: CharLook
 ) {
-  // 全部按最终 57px 身高排坐标，不再用 c.scale() 压缩（否则 1px 细节会糊）
+  // 3/4 斜视角：四个朝向都能同时看到正面与一侧，左右互为镜像。
+  // 参数 turn: -1=面朝左前, 0=正/背, 1=面朝右前；back: 背面。
+  const turn = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+  const back = dir === 'up';
+  const t = Math.abs(turn);              // 侧转程度 0 或 1（3/4 不做纯侧）
   const swing = moving ? Math.sin(swingPhase) : 0;
   const bob = moving ? -Math.abs(Math.cos(swingPhase)) * 1.2 : Math.sin(clock / 950) * 0.4;
   const blink = (clock % 3800) < 120;
-  const side = dir === 'left' || dir === 'right';
-  const faceRight = dir === 'right';
-  const W = side ? 0.8 : 1; // 侧面收窄，做出转身的体积差
 
   const skin = MAT.skin.base;
   const skinHi = MAT.skin.hi;
@@ -2845,203 +2846,209 @@ function drawCharacter(
   const armSwing = swing * 2;
   const shapes: Array<{ pts: Poly; color: string }> = [];
 
-  /* --- 裆部：先入列，填满两腿之间的空隙。
-     否则身体下摆到靴子之间会露出一条贯通的背景色裂缝，像两根管子挂在身上 --- */
-  shapes.push({ pts: boxPoly(-4 * W, -13, 8 * W, 8, 2), color: shift(look.pants, -18) });
+  /* --- 裆部：填满两腿之间，连成一条裤子 --- */
+  shapes.push({ pts: boxPoly(-4, -13, 8, 8, 2), color: shift(look.pants, -18) });
 
-  /* --- 腿：9→7 锥形，短粗，不是竹竿 --- */
-  shapes.push({ pts: shiftPoly(taperPoly(-13, 9 * W, -5, 7 * W, -5.5 * W), 0, legDY), color: look.pants });
-  shapes.push({ pts: shiftPoly(taperPoly(-13, 9 * W, -5, 7 * W, 5.5 * W), 0, -legDY), color: look.pants });
-  /* 靴子：短方头 */
-  shapes.push({ pts: boxPoly(-10 * W, -5 + legDY, 9 * W, 5, 2), color: boot });
-  shapes.push({ pts: boxPoly(1 * W, -5 - legDY, 9 * W, 5, 2), color: boot });
+  /* --- 腿：3/4 视角下远侧腿略靠后、略窄，近侧腿在前 --- */
+  // 远侧腿（背向 turn 的一侧）往后收 1px、窄 1px
+  const farLegCX = turn === 0 ? -5.5 : -5.5 * (1 - 0.12 * t);
+  const nearLegCX = turn === 0 ? 5.5 : 5.5 * (1 - 0.12 * t);
+  const legOffset = turn === 0 ? 0 : 1; // 3/4 时两腿前后错开
+  shapes.push({
+    pts: shiftPoly(taperPoly(-13, turn < 0 ? 8 : 9, -5, turn < 0 ? 6 : 7, farLegCX), 0, legDY + (turn > 0 ? legOffset : 0)),
+    color: shift(look.pants, turn === 0 ? 0 : -10)
+  });
+  shapes.push({
+    pts: shiftPoly(taperPoly(-13, turn > 0 ? 8 : 9, -5, turn > 0 ? 6 : 7, nearLegCX), 0, -legDY + (turn < 0 ? legOffset : 0)),
+    color: look.pants
+  });
+  /* 靴子：前伸鞋头，远侧略暗 */
+  shapes.push({ pts: boxPoly(-10, -5 + legDY + (turn > 0 ? legOffset : 0), 9, 5, 2), color: turn === 0 ? boot : shift(boot, -12) });
+  shapes.push({ pts: boxPoly(1, -5 - legDY + (turn < 0 ? legOffset : 0), 9, 5, 2), color: boot });
 
-  /* --- 手臂：从肩部内侧出发斜向外下，根部插进躯干被盖住，袖口收窄 ---
-     右臂坐标，左臂镜像；袖子与躯干同色，视觉上连成一体而不是贴上的棍子 --- */
+  /* --- 手臂：3/4 视角下远侧手臂略靠后、被身体挡一点 --- */
   const mirrorX = (pts: Poly): Poly => pts.map(([x, y]) => [-x, y] as [number, number]);
   const armR = (dy: number): Poly => [
-    [6 * W, -30 + dy], [10 * W, -29 + dy],
-    [13 * W, -20 + dy], [12 * W, -16 + dy],
-    [8 * W, -16 + dy], [7 * W, -22 + dy]
+    [6, -30 + dy], [10, -29 + dy], [13, -20 + dy], [12, -16 + dy], [8, -16 + dy], [7, -22 + dy]
   ];
-  const handR = (dy: number): Poly => boxPoly(9 * W, -18 + dy, 4 * W, 4, 2);
-  shapes.push({ pts: mirrorX(armR(armSwing)), color: look.shirt });
-  shapes.push({ pts: armR(-armSwing), color: look.shirt });
-  shapes.push({ pts: mirrorX(handR(armSwing)), color: skin });
-  shapes.push({ pts: handR(-armSwing), color: skin });
+  const handR = (dy: number): Poly => boxPoly(9, -18 + dy, 4, 4, 2);
+  // turn=1：右臂是近侧（在前），左臂远侧（暗一点、后一点）
+  shapes.push({ pts: mirrorX(armR(armSwing + (turn === 1 ? 0 : 1))), color: turn === 0 ? look.shirt : shift(look.shirt, -14) });
+  shapes.push({ pts: armR(-armSwing + (turn === -1 ? 0 : 1)), color: look.shirt });
+  shapes.push({ pts: mirrorX(handR(armSwing + (turn === 1 ? 0 : 1))), color: turn === 0 ? skin : skinLo });
+  shapes.push({ pts: handR(-armSwing + (turn === -1 ? 0 : 1)), color: skin });
 
-  /* --- 躯干：肩 23 → 腰 18 --- */
-  shapes.push({ pts: taperPoly(-31, 23 * W, -13, 18 * W, 0, 2), color: look.shirt });
+  /* --- 躯干：3/4 视角略窄、两侧不对称（远侧肩收 1px） --- */
+  const torso: Poly = t
+    ? [
+        [turn < 0 ? -10 : -11, -31], [turn > 0 ? 11 : 10, -31],
+        [11, -29], [10, -14], [turn > 0 ? 9 : 8, -13],
+        [-8, -13], [turn < 0 ? -9 : -8, -14], [-11, -29]
+      ]
+    : taperPoly(-31, 23, -13, 18, 0, 2);
+  shapes.push({ pts: torso, color: look.shirt });
   if (look.overall) {
-    shapes.push({ pts: taperPoly(-22, 20 * W, -13, 18 * W, 0, 2), color: look.overall });
+    shapes.push({ pts: t ? taperPoly(-22, 18, -13, 17, 0, 2) : taperPoly(-22, 20, -13, 18, 0, 2), color: look.overall });
   } else if (look.apron) {
-    shapes.push({ pts: taperPoly(-20, 16 * W, -13, 15 * W, 0, 1), color: look.apron });
+    shapes.push({ pts: taperPoly(-20, 16, -13, 15, 0, 1), color: look.apron });
   }
 
   /* 脖子 */
-  shapes.push({ pts: boxPoly(-3 * W, -34, 6 * W, 4, 1), color: skinLo });
+  shapes.push({ pts: boxPoly(-3, -34, 6, 4, 1), color: skinLo });
 
-  /* --- 头：圆角大脸，侧面是窄脸 + 鼻尖 --- */
+  /* --- 头：3/4 视角的脸，比正面窄一点；背面是后脑勺 --- */
   const headY = -48;
-  const headPts: Poly = side
-    ? [[-8 * W, headY + 4], [8 * W, headY + 4], [9 * W, headY + 10],
-       [7 * W, headY + 16], [3 * W, headY + 16], [2 * W, headY + 14],
-       [-6 * W, headY + 14], [-9 * W, headY + 9]]
-    : boxPoly(-11 * W, headY, 22 * W, 16, 5);
+  const headPts: Poly = back
+    ? boxPoly(-11, headY, 22, 16, 5)
+    : t
+      ? [ // 3/4 脸：下颚略偏向转向侧，一侧脸颊稍宽
+          [-9, headY + 3], [9, headY + 3], [9, headY + 11],
+          [turn > 0 ? 7 : 5, headY + 16], [turn > 0 ? 3 : 1, headY + 16],
+          [turn > 0 ? -6 : -7, headY + 15], [-10, headY + 10]
+        ]
+      : boxPoly(-11, headY, 22, 16, 5);
   shapes.push({ pts: headPts, color: skin });
 
-  /* 头发 */
-  if (dir === 'up') {
+  /* 头发：背面整块后脑勺；正面/3/4 是刘海 + 两侧鬓角 */
+  if (back) {
     shapes.push({ pts: shiftPoly(headPts, 0, -0.5), color: look.hair });
   } else {
-    shapes.push({ pts: boxPoly(-11 * W, headY - 1, 22 * W, 6, 2), color: look.hair });
-    // 鬓角：贴着脸颊两侧往下收，不做成外凸的"耳机"
-    shapes.push({ pts: [[-11 * W, headY + 4], [-8 * W, headY + 4], [-8 * W, headY + 12], [-10 * W, headY + 11]], color: look.hair });
-    shapes.push({ pts: [[8 * W, headY + 4], [11 * W, headY + 4], [10 * W, headY + 11], [8 * W, headY + 12]], color: look.hair });
+    shapes.push({ pts: boxPoly(-11, headY - 1, 22, 6, 2), color: look.hair });
+    // 鬓角：转向侧被刘海遮多一点，远侧留一缕
+    shapes.push({ pts: [[-11, headY + 4], [-8, headY + 4], [-8, headY + 12], [-10, headY + 11]], color: look.hair });
+    shapes.push({ pts: [[8, headY + 4], [11, headY + 4], [10, headY + 11], [8, headY + 12]], color: look.hair });
   }
 
-  /* 草帽：梯形帽冠（上窄下宽）+ 稍窄帽檐，更像牧场物语的蓬松草帽 */
+  /* 草帽：梯形帽冠 + 稍窄帽檐 */
   if (look.hat) {
-    shapes.push({ pts: taperPoly(-57, 13 * W, -49, 19 * W, 0, 2), color: look.hat.base });
-    shapes.push({ pts: boxPoly(-14 * W, -50, 28 * W, 3, 2), color: look.hat.base });
+    shapes.push({ pts: taperPoly(-57, 13, -49, 19, 0, 2), color: look.hat.base });
+    shapes.push({ pts: boxPoly(-14, -50, 28, 3, 2), color: look.hat.base });
   }
 
-  /* ---------- ① 整体剪影轮廓 ----------
-     先把所有形状用同一轮廓色画到离屏画布 = 它们的并集（互相覆盖，不留内部线），
-     再把并集往 8 个方向各偏移 1px 画回主画布 = 外扩 1px 的整体轮廓。
-     这样只有最外缘有轮廓线，肩-臂 / 身-裤 / 裤-靴 之间不再被逐部件描边切断。 */
+  /* ---------- ① 整体剪影轮廓：所有形状并集外扩 1px ---------- */
   const silW = 40, silH = 66;
-  const sx0 = -20, sy0 = -60; // 离屏覆盖 x[-20,20] y[-60,6]
+  const sx0 = -20, sy0 = -60;
   const sil = document.createElement('canvas');
   sil.width = silW; sil.height = silH;
   const sc = sil.getContext('2d')!;
   sc.translate(-sx0, -sy0);
   sc.fillStyle = OUTLINE;
   for (const s of shapes) fillPoly(sc, s.pts);
-  // 8 邻域偏移 = 1px 膨胀；主画布此刻原点在玩家脚底
   for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) {
     c.drawImage(sil, sx0 + dx, sy0 + dy);
   }
 
-  /* ---------- ② 填色：真实色覆盖内部，只留最外一圈轮廓 ---------- */
+  /* ---------- ② 填色 ---------- */
   for (const s of shapes) {
     c.fillStyle = s.color;
     fillPoly(c, s.pts);
   }
 
   /* ---------- ③ 光影细节 ---------- */
-  // 裤脚：贯通的一条，和裆部连成整体，不在中间断开成"开衩"
+  // 裤脚贯通
   c.fillStyle = shift(look.pants, -30);
-  c.fillRect(-9 * W, -8, 18 * W, 2);
+  c.fillRect(-9, -8, 18, 2);
   c.fillStyle = look.pantsHi;
-  c.fillRect(-8 * W, -13 + legDY, 2, 5);
-  c.fillRect(4 * W, -13 - legDY, 2, 5);
+  c.fillRect(-8 + (turn === 0 ? 0 : (turn > 0 ? 1 : 0)), -13 + legDY, 2, 5);
+  c.fillRect(4 - (turn === 0 ? 0 : (turn < 0 ? 1 : 0)), -13 - legDY, 2, 5);
   // 鞋底 + 鞋头高光
   c.fillStyle = shift(boot, -30);
-  c.fillRect(-10 * W, -1 + legDY, 9 * W, 1);
-  c.fillRect(1 * W, -1 - legDY, 9 * W, 1);
+  c.fillRect(-10, -1 + legDY + (turn > 0 ? legOffset : 0), 9, 1);
+  c.fillRect(1, -1 - legDY + (turn < 0 ? legOffset : 0), 9, 1);
   c.fillStyle = shift(boot, 30);
-  c.fillRect(-9 * W, -4 + legDY, 6 * W, 1);
-  c.fillRect(2 * W, -4 - legDY, 6 * W, 1);
-  // 袖口 + 手受光（跟随新的斜向袖子位置）
+  c.fillRect(-9, -4 + legDY + (turn > 0 ? legOffset : 0), 6, 1);
+  c.fillRect(2, -4 - legDY + (turn < 0 ? legOffset : 0), 6, 1);
+  // 袖口 + 手受光
   c.fillStyle = shift(look.shirt, -34);
-  c.fillRect(-13 * W, -18 + armSwing, 6 * W, 2);
-  c.fillRect(8 * W, -18 - armSwing, 6 * W, 2);
+  c.fillRect(-13, -18 + armSwing + (turn === 1 ? 0 : 1), 6, 2);
+  c.fillRect(8, -18 - armSwing + (turn === -1 ? 0 : 1), 6, 2);
   c.fillStyle = skinHi;
-  c.fillRect(-11 * W, -18 + armSwing, 3 * W, 1);
-  c.fillRect(9 * W, -18 - armSwing, 3 * W, 1);
-  // 躯干受光 + 领口
+  c.fillRect(-11, -18 + armSwing + (turn === 1 ? 0 : 1), 3, 1);
+  c.fillRect(9, -18 - armSwing + (turn === -1 ? 0 : 1), 3, 1);
+  // 躯干受光 + 领口（3/4 时受光偏转向侧）
   c.fillStyle = look.shirtHi;
-  c.fillRect(-8 * W, -30, 15 * W, 2);
+  c.fillRect(turn > 0 ? -6 : -8, -30, 15, 2);
   c.fillStyle = shift(look.shirt, 40);
-  c.fillRect(-4 * W, -31, 8 * W, 2);
-  // 背带裤 / 围裙
+  c.fillRect(-4, -31, 8, 2);
+  // 背带裤：3/4 时远侧带子略窄
   if (look.overall) {
     c.fillStyle = look.overallHi ?? shift(look.overall, 24);
-    c.fillRect(-9 * W, -21, 18 * W, 2);
+    c.fillRect(-9, -21, 18, 2);
     c.fillStyle = look.overall;
-    c.fillRect(-8 * W, -30, 3 * W, 9);
-    c.fillRect(5 * W, -30, 3 * W, 9);
+    c.fillRect(-8, -30, t ? 2 : 3, 9);
+    c.fillRect(5, -30, t ? 3 : 3, 9);
     c.fillStyle = '#d8c060';
-    c.fillRect(-8 * W, -22, 3 * W, 2);
-    c.fillRect(5 * W, -22, 3 * W, 2);
+    c.fillRect(-8, -22, t ? 2 : 3, 2);
+    c.fillRect(5, -22, 3, 2);
     c.fillStyle = shift(look.overall, -22);
-    c.fillRect(-5 * W, -18, 10 * W, 4);
+    c.fillRect(-5, -18, 10, 4);
   } else if (look.apron) {
     c.fillStyle = shift(look.apron, 20);
-    c.fillRect(-6 * W, -19, 12 * W, 2);
+    c.fillRect(-6, -19, 12, 2);
   }
 
-  /* ---------- ④ 五官 ---------- */
-  if (dir === 'up') {
+  /* ---------- ④ 五官：3/4 保留两只眼，位置随转向偏移 ---------- */
+  if (back) {
     c.fillStyle = look.hairHi;
-    c.fillRect(-7 * W, headY + 1, 14 * W, 2);
-  } else if (side) {
-    // 侧脸：一只眼 + 鼻尖，不再和正面共用
-    const ex = faceRight ? 3 * W : -5 * W;
-    if (!blink) {
-      c.fillStyle = '#fdfaf4';
-      c.fillRect(ex, headY + 7, 2.5 * W, 3.5);
-      c.fillStyle = '#3a2a1c';
-      c.fillRect(ex + 0.5 * W, headY + 7.5, 1.5 * W, 2.5);
-      c.fillStyle = '#fff';
-      c.fillRect(ex + 0.5 * W, headY + 8, 0.8 * W, 0.8);
-    } else {
-      c.fillStyle = '#3a2a1c';
-      c.fillRect(ex, headY + 8, 2.5 * W, 1);
-    }
-    c.fillStyle = skinLo;
-    c.fillRect(faceRight ? 9 * W : -10 * W, headY + 9, 2 * W, 2);
-    c.fillStyle = look.hairHi;
-    c.fillRect(faceRight ? 2 * W : -9 * W, headY + 3, 7 * W, 2);
+    c.fillRect(-7, headY + 1, 14, 2);
   } else {
     const eyeY = headY + 7;
+    // 3/4：两眼整体往转向侧偏 1px，远侧眼略靠近中线
+    const shiftEye = turn * 1.5;
+    const farEyeX = -6 - t + shiftEye;
+    const nearEyeX = 3 + shiftEye;
     if (blink) {
       c.fillStyle = shift(skin, -60);
-      c.fillRect(-6 * W, eyeY + 2, 3 * W, 1);
-      c.fillRect(3 * W, eyeY + 2, 3 * W, 1);
+      c.fillRect(farEyeX, eyeY + 2, 3, 1);
+      c.fillRect(nearEyeX, eyeY + 2, 3, 1);
     } else {
-      for (const ex of [-6 * W, 3 * W]) {
+      for (const ex of [farEyeX, nearEyeX]) {
         c.fillStyle = '#fdfaf4';
-        c.fillRect(ex, eyeY, 3 * W, 4);
+        c.fillRect(Math.round(ex), eyeY, 3, 4);
         c.fillStyle = '#3a2a1c';
-        c.fillRect(ex, eyeY + 1, 3 * W, 3);
-        c.fillStyle = '#fff';
-        c.fillRect(ex + 0.5 * W, eyeY + 1, 1 * W, 1);
+        c.fillRect(Math.round(ex), eyeY + 1, 3, 3);
+        c.fillStyle = '#ffffff';
+        c.fillRect(Math.round(ex) + 0.5, eyeY + 1, 1, 1);
       }
     }
+    // 眉毛
     c.fillStyle = shift(look.hair, -10);
-    c.fillRect(-6 * W, eyeY - 2, 3 * W, 1);
-    c.fillRect(3 * W, eyeY - 2, 3 * W, 1);
+    c.fillRect(Math.round(farEyeX), eyeY - 2, 3, 1);
+    c.fillRect(Math.round(nearEyeX), eyeY - 2, 3, 1);
+    // 鼻尖：3/4 时在中线偏转向侧 1px，并入脸轮廓
+    if (t) {
+      c.fillStyle = skinLo;
+      c.fillRect(turn > 0 ? 1 : -2, eyeY + 3, 2, 2);
+    }
+    // 腮红：转向侧那半边更明显
     c.fillStyle = '#d98f7a';
-    c.fillRect(-9 * W, eyeY + 4, 2 * W, 2);
-    c.fillRect(7 * W, eyeY + 4, 2 * W, 2);
+    c.fillRect(-9, eyeY + 4, 2, 2);
+    c.fillRect(7, eyeY + 4, t ? 1 : 2, 2);
+    // 嘴
     c.fillStyle = shift(skin, -56);
-    c.fillRect(-1 * W, eyeY + 5, 2 * W, 1);
+    c.fillRect(-1, eyeY + 5, 2, 1);
+    // 刘海
     c.fillStyle = look.hairHi;
-    c.fillRect(-10 * W, headY + 3, 20 * W, 2);
+    c.fillRect(-10, headY + 3, 20, 2);
     c.fillStyle = look.hair;
-    c.fillRect(-5 * W, headY + 5, 4 * W, 2);
-    c.fillRect(2 * W, headY + 5, 3 * W, 2);
-  }
-
-  /* 脸颊受光 */
-  if (dir !== 'up') {
+    c.fillRect(-5, headY + 5, 4, 2);
+    c.fillRect(2, headY + 5, 3, 2);
+    // 脸颊受光
     c.fillStyle = skinHi;
-    c.fillRect(-8 * W, headY + 2, 16 * W, 1);
+    c.fillRect(-8, headY + 2, 16, 1);
   }
 
   /* ---------- ⑤ 草帽细节 ---------- */
   if (look.hat) {
     const h = look.hat;
     c.fillStyle = h.hi;
-    c.fillRect(-11 * W, -53, 22 * W, 1);
+    c.fillRect(-11, -53, 22, 1);
     c.fillStyle = h.line;
-    c.fillRect(-13 * W, -48, 26 * W, 1);
+    c.fillRect(-13, -48, 26, 1);
     c.fillStyle = h.ribbon;
-    c.fillRect(-9 * W, -52, 19 * W, 3);
+    c.fillRect(-9, -52, 19, 3);
     c.fillStyle = h.ribbonHi;
-    c.fillRect(-9 * W, -52, 19 * W, 1);
+    c.fillRect(-9, -52, 19, 1);
   }
 
   c.restore();

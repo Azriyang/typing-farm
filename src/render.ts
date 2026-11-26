@@ -2840,6 +2840,10 @@ function drawCharacter(
   const armSwing = swing * 2;
   const shapes: Array<{ pts: Poly; color: string }> = [];
 
+  /* --- 裆部：先入列，填满两腿之间的空隙。
+     否则身体下摆到靴子之间会露出一条贯通的背景色裂缝，像两根管子挂在身上 --- */
+  shapes.push({ pts: boxPoly(-4 * W, -13, 8 * W, 8, 2), color: shift(look.pants, -18) });
+
   /* --- 腿：9→7 锥形，短粗，不是竹竿 --- */
   shapes.push({ pts: shiftPoly(taperPoly(-13, 9 * W, -5, 7 * W, -5.5 * W), 0, legDY), color: look.pants });
   shapes.push({ pts: shiftPoly(taperPoly(-13, 9 * W, -5, 7 * W, 5.5 * W), 0, -legDY), color: look.pants });
@@ -2914,10 +2918,9 @@ function drawCharacter(
   }
 
   /* ---------- ③ 光影细节 ---------- */
-  // 裤脚 + 腿受光
+  // 裤脚：贯通的一条，和裆部连成整体，不在中间断开成"开衩"
   c.fillStyle = shift(look.pants, -30);
-  c.fillRect(-9 * W, -8 + legDY, 7 * W, 2);
-  c.fillRect(2 * W, -8 - legDY, 7 * W, 2);
+  c.fillRect(-9 * W, -8, 18 * W, 2);
   c.fillStyle = look.pantsHi;
   c.fillRect(-8 * W, -13 + legDY, 2, 5);
   c.fillRect(4 * W, -13 - legDY, 2, 5);

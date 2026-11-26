@@ -2819,6 +2819,8 @@ function drawCharacter(
   c: Ctx, px: number, py: number, dir: Dir,
   swingPhase: number, moving: boolean, clock: number, look: CharLook
 ) {
+  // 整体缩放：几何坐标是按 81px 身高设计的，这里统一缩到 0.7 倍（约 1.5 格）
+  const K = 0.7;
   const swing = moving ? Math.sin(swingPhase) : 0;
   const bob = moving ? -Math.abs(Math.cos(swingPhase)) * 1.6 : Math.sin(clock / 950) * 0.5;
   const blink = (clock % 3800) < 120;
@@ -2828,10 +2830,11 @@ function drawCharacter(
   const skinLo = shift(MAT.skin.base, -38);
   const boot = CHAR.boot.base;
 
-  softShadow(c, px, py + 1, 12, 4.2, 0.3);
+  softShadow(c, px, py + 1, 12 * K, 4.2 * K, 0.3);
 
   c.save();
   c.translate(Math.round(px), Math.round(py + bob));
+  c.scale(K, K);
 
   const armSwing = swing * 2.4;
   const legDY = swing * 1.3;
@@ -3088,22 +3091,22 @@ function drawVillager(c: Ctx, v: Villager, nowMs: number) {
     const w = c.measureText(def.name).width + 12;
     // 描边底 + 填充
     c.fillStyle = 'rgba(45,32,22,.55)';
-    c.fillRect(v.x - w / 2 - 1, v.y - 77, w + 2, 16);
+    c.fillRect(v.x - w / 2 - 1, v.y - 54, w + 2, 16);
     c.fillStyle = 'rgba(245,235,215,.94)';
-    c.fillRect(v.x - w / 2, v.y - 76, w, 14);
+    c.fillRect(v.x - w / 2, v.y - 53, w, 14);
     c.fillStyle = '#4a3320';
-    c.fillText(def.name, v.x, v.y - 66);
+    c.fillText(def.name, v.x, v.y - 46);
 
     // 正在做的事：让「他有自己的生活」看得见
     if (v.doing) {
       c.font = '10px "PingFang SC",sans-serif';
       const dw = c.measureText(v.doing).width + 10;
       c.fillStyle = 'rgba(45,32,22,.42)';
-      c.fillRect(v.x - dw / 2 - 1, v.y - 91, dw + 2, 13);
+      c.fillRect(v.x - dw / 2 - 1, v.y - 64, dw + 2, 13);
       c.fillStyle = 'rgba(230,220,200,.9)';
-      c.fillRect(v.x - dw / 2, v.y - 90, dw, 11);
+      c.fillRect(v.x - dw / 2, v.y - 63, dw, 11);
       c.fillStyle = '#5a4530';
-      c.fillText(v.doing, v.x, v.y - 81.5);
+      c.fillText(v.doing, v.x, v.y - 57);
     }
     c.textAlign = 'left';
   }
@@ -3631,7 +3634,7 @@ function drawPrompt(c: Ctx, state: GameState, nowMs: number) {
     const def = VILLAGER_DEFS[nearV.id];
     label = `和 ${def?.name ?? '村民'} 聊聊`;
     cx = nearV.x;
-    cy = nearV.y - 66 + Math.sin(nowMs / 420) * 2;
+    cy = nearV.y - 46 + Math.sin(nowMs / 420) * 2;
   } else {
   // 其次：面朝的动物
   const near = animalNearInScene(state, state.player.x, state.player.y, state.player.dir);

@@ -7,3 +7,8 @@ Thumbs.db
 
 # 打包产物（用 pnpm package 生成，不进仓库）
 release/
+.test-build/
+
+# 提交信息临时文件（用 git commit -F）
+.commitmsg.tmp
+_*.tmp.md

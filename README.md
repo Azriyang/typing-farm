@@ -152,11 +152,61 @@ Windows 上更省事：**双击 `play.bat`**，自动起服务器并打开浏览
 
 **在线试玩**：https://azriyang.github.io/typing-farm/
 
-推送 `main` 会自动构建并发布到 GitHub Pages（见 `.github/workflows/deploy.yml`）。
-仓库 Settings → Pages → Source 需选「GitHub Actions」，只需设置一次。
-
 > 打包产物是普通静态文件，但用了 ES module，浏览器不允许 `file://` 直接打开，
 > 所以需要一个本地服务器（`serve.mjs` 是零依赖的 20 行实现）。
+
+---
+
+## 测试与发版
+
+### 测试
+
+```bash
+pnpm typecheck      # tsc --noEmit
+pnpm test           # 单元测试
+pnpm verify         # 上面两个一起跑
+```
+
+单元测试放在 `tests/`，**不依赖任何测试框架**：`scripts/test.mjs` 用项目里已有的
+`tsc` 把 `src` 与 `tests` 编译成 CommonJS 到 `.test-build/`，再用 node 直接跑，
+失败即非零退出。理由是不想为几个断言再引入 vitest + `@types/node`。
+
+新增测试：在 `tests/` 下写 `*.test.ts`，用 `tests/harness.ts` 里的
+`test / ok / eq / near / throws`，然后在 `tests/all.ts` 里加一行 import。
+
+覆盖目标是**改坏了不会报错、但会让玩法失衡**的地方：资源分档、难度分档、
+经济价格、多语言回退、地形阻挡、格子换算。
+
+### 发版
+
+```bash
+node scripts/release.mjs patch|minor|major        # 只到本地
+node scripts/release.mjs minor --push             # 跑完直接推送（触发部署）
+```
+
+脚本按顺序做，任一步失败就退出、不改任何文件：
+
+1. 检查工作区干净、在 `main` 分支
+2. **跑类型检查 + 单元测试**（不通过就停在这）
+3. 升 `package.json` 版本，同步写 `src/version.ts`
+4. 提交 `chore(release): vX.Y.Z`
+5. 打带注释的 tag
+6. 只有传了 `--push` 才推 `main` 与 tag
+
+### 部署规则
+
+| 触发 | 行为 |
+| --- | --- |
+| push 到 `main` | 只跑检查（类型检查 / 测试 / 构建），**不部署** |
+| push tag `v*` | 检查通过后部署，且校验 tag 与 `package.json` 一致 |
+| 手动运行 | 跑检查；只有 ref 是 `v*` 标签时才部署 |
+
+所以线上的每一次更新都必然满足：**测试通过 + 有一个版本 tag**。
+标题画面底部会显示 `TYPING FARM · vX.Y.Z`，线上出问题时先核对这个版本号，
+就能确认是不是最新构建。
+
+仓库 Settings → Pages → Source 需选「GitHub Actions」，只需设置一次。
+
 
 ---
 

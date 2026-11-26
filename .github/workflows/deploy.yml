@@ -1,18 +1,28 @@
-# 构建并部署到 GitHub Pages
+# 构建、测试并部署到 GitHub Pages
 #
-# 触发：推到 main 分支，或在 Actions 页面手动运行
-# 产物：https://<用户名>.github.io/typing-farm/
+# 触发规则（这是本项目发版流程的核心约束）：
+#   · push 到 main   → 只跑检查（类型检查 + 单元测试 + 构建），**不部署**
+#   · push tag v*    → 跑检查，全部通过后才部署
+#   · 手动运行       → 同样跑检查；只有 ref 是 v* 标签时才会部署
+#
+# 所以「部署」永远满足两个条件：
+#   1. 类型检查与单元测试通过
+#   2. 有一个版本 tag，且 tag 与 package.json 的 version 一致
+#
+# 发版：node scripts/release.mjs patch|minor|major --push
+#       （脚本会先跑测试，通过后才升版本、提交、打 tag、推送）
 #
 # 前置：仓库 Settings → Pages → Source 选「GitHub Actions」（只需设置一次）
 
-name: Deploy to GitHub Pages
+name: CI & Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
-# 同一时间只跑一个部署，新推送会取消旧的
+# 同一时间只跑一个，新推送取消旧的（避免部署互相覆盖）
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -23,12 +33,13 @@ permissions:
   id-token: write
 
 jobs:
-  build:
+  verify:
+    name: 类型检查 / 单元测试 / 构建
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # 用 corepack 按 package.json 里的 packageManager 字段装指定版本 pnpm，
+      # 用 corepack 按 package.json 的 packageManager 装指定版本 pnpm，
       # 避免 CI 与本地版本不一致导致 lockfile 解析出问题
       - name: Enable corepack
         run: corepack enable
@@ -40,29 +51,49 @@ jobs:
 
       - name: Install dependencies
         # --ignore-scripts 是必须的：pnpm 10+ 会把「未批准的依赖构建脚本」当成错误（退出码 1），
-        # 而批准状态记在**本地全局配置**里，CI 里没有。
-        # esbuild / rollup 的原生二进制来自各自的平台包（@esbuild/*、@rollup/*），
-        # 不靠 postinstall，所以跳过脚本不影响构建。
+        # 而批准状态记在本地全局配置里，CI 里没有。
+        # esbuild / rollup 的原生二进制来自各自的平台包，不靠 postinstall。
         run: pnpm install --frozen-lockfile --ignore-scripts
         env:
-          # 双保险：万一以后去掉 --ignore-scripts，也别去下载 110MB 的 Electron
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
-      - name: Typecheck & build
-        run: pnpm build
+      - name: Typecheck
+        run: pnpm typecheck
 
-      - uses: actions/configure-pages@v5
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
 
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
+      # 只有 tag 推送才可能走到部署；这里顺带校验 tag 与 package.json 是否一致，
+      # 防止"打了 tag 但版本号忘了改"导致线上产物无法识别版本
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "package.json = $PKG_VERSION / tag = $TAG_VERSION"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tag ($TAG_VERSION) 与 package.json ($PKG_VERSION) 不一致，拒绝部署"
+            exit 1
+          fi
+
   deploy:
-    needs: build
+    name: 部署到 Pages
+    needs: verify
+    # 只有版本 tag 才部署：main 分支的推送只做检查
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/configure-pages@v5
+
       - id: deployment
         uses: actions/deploy-pages@v4

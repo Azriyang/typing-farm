@@ -45,6 +45,7 @@ import {
   inputValue, TIER_LABEL
 } from './cook';
 import { t, tr, getLang, setLang, applyStaticI18n } from './i18n';
+import { VERSION } from './version';
 import { findPath, nearestWalkable, simplifyPath } from './pathfind';
 import { rollRequests } from './requests';
 import { RELICS, relicById, newlyUnlocked } from './relics';
@@ -4122,6 +4123,10 @@ export function boot(): void {
     window.location.reload();
   });
   applyStaticI18n();
+
+  // 标题上显示版本号：线上出问题时，问一句「标题显示多少」就能确认是不是最新构建
+  const subEl = document.getElementById('title-sub');
+  if (subEl) subEl.textContent = `TYPING FARM · v${VERSION}`;
 
   // 点击画面自动走过去（打字游戏里，移动不该占用打字的手）
   cv.addEventListener('click', (e) => {

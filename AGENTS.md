@@ -147,21 +147,63 @@
 
 ---
 
-## 七、版本控制与部署
+## 七、测试
 
-- 一轮改动 = 一个提交；提交信息用中文，正文写清"为什么改"而不是复述 diff。
-- 每轮同步更新 `README.md` 与 `docs/design-v2-bag-tools.md`（新增一节，带验证数据）。
-- 推送：`github.com:443` 偶发连接重置，改用
-  `git push ssh://git@ssh.github.com:443/Azriyang/typing-farm.git main`。
-- **禁止反复触发部署**。用户明确要求过"不要一直部署"：
-  推送后看一次 Actions 结果即可；`deploy-pages` 失败时不要连着重推，
-  如实报告并让用户在网页上 Re-run。
-- 线上产物与本地构建对不上时，先比 `dist/index.html` 里的 `index-*.js` 哈希，
-  确认是"没部署"还是"浏览器缓存"——**验证线上前先强刷**。
+- 任何代码改动提交前**必须**跑 `pnpm verify`（= `tsc --noEmit` + 单元测试）。
+  类型检查或测试不通过时不得提交。
+- 测试放在 `tests/`，用 `tests/harness.ts` 的 `test / ok / eq / near / throws`，
+  新增文件后在 `tests/all.ts` 里加一行 import。
+- **不引入测试框架**。`scripts/test.mjs` 用项目已有的 `tsc` 把 `src` 与 `tests`
+  编译成 CommonJS 到 `.test-build/`（并写一个 `{"type":"commonjs"}` 进去，
+  否则会被上层的 `type: module` 按 ESM 解析报错），再用 node 直接跑。
+  理由是项目没有 `@types/node`，为几个断言再装 vitest + node 类型不划算。
+- 测试优先覆盖**改坏了不会报错、但会让玩法失衡**的地方：资源分档、难度分档、
+  经济价格、多语言回退、地形阻挡、格子换算。
+- 写断言前先确认数据本身的真实意图。本轮就被测试抓到三处错误假设：
+  花卉是「种子贵于售价」的刻意设计、材料类不可出售、地形需要先 `buildScene()` 才有内容。
+- 新增玩法数值时同步补测试，尤其是"分档是否还成立"这类规则。
 
 ---
 
-## 八、交付报告格式
+## 八、版本控制与部署
+
+- 一轮改动 = 一个提交；提交信息用中文，正文写清"为什么改"而不是复述 diff。
+- 每轮同步更新 `README.md` 与 `docs/design-v2-bag-tools.md`（新增一节，带验证数据）。
+
+### 发版流程（唯一允许的部署方式）
+
+```bash
+node scripts/release.mjs patch|minor|major        # 只到本地
+node scripts/release.mjs minor --push             # 跑完直接推送（触发部署）
+```
+
+脚本顺序固定，任一步失败即退出且不改任何文件：
+检查工作区干净 → 检查在 `main` → **类型检查 + 单元测试** → 升 `package.json` 版本
+→ 同步写 `src/version.ts` → 提交 `chore(release): vX.Y.Z` → 打注释 tag
+→ 仅在传了 `--push` 时推 `main` 与 tag。
+
+### 部署的硬性条件
+
+| 触发 | 行为 |
+| --- | --- |
+| push 到 `main` | 只跑检查（类型检查 / 单元测试 / 构建），**绝不部署** |
+| push tag `v*` | 检查通过后部署，并校验 tag 与 `package.json` 版本一致 |
+| 手动运行 | 跑检查；只有 ref 是 `v*` 标签时才部署 |
+
+- **禁止手工改 `package.json` 版本号后直接推 main 就以为发版了**：线上只认 tag。
+- **禁止绕过测试部署**：`deploy` job 的 `needs` 指向 `verify`，不要为了"先上线再说"去掉。
+- **禁止在 `deploy-pages` 失败后连续重推**。看一次结果，如实报告，
+  让用户在 Actions 页面 Re-run；历史上连着重推只会都被拒。
+- 标题画面会显示 `TYPING FARM · vX.Y.Z`。核对线上版本先看这个，
+  再和 `dist/index.html` 里的 `index-*.js` 哈希比对；**验证线上前先强刷**，
+  否则看到的可能是旧缓存。
+- 推送：`github.com:443` 偶发连接重置，改用
+  `git push ssh://git@ssh.github.com:443/Azriyang/typing-farm.git main`（tag 同理）。
+
+---
+
+
+## 九、交付报告格式
 
 每次交付必须包含以下四段，缺一视为未完成：
 

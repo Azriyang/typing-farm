@@ -1,0 +1,13 @@
+{
+  "// 说明": "测试专用：把 src 与 tests 一起编译成 CommonJS 到 .test-build，供 node 直接运行",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "outDir": ".test-build",
+    "rootDir": "."
+  },
+  "include": ["src", "tests"]
+}

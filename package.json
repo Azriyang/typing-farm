@@ -14,11 +14,15 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "verify": "tsc --noEmit && node scripts/test.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "play": "node serve.mjs",
     "electron": "electron .",
-    "package": "vite build && node scripts/package-win.mjs"
+    "package": "vite build && node scripts/package-win.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

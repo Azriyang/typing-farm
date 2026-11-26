@@ -22,9 +22,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# 同一时间只跑一个，新推送取消旧的（避免部署互相覆盖）
+# 同一引用（同一个分支 / 同一个 tag）内只跑一个，新推送取消旧的。
+# 用 ref 分组而不是全局 pages 组：否则一次 main 推送会把正在进行的 tag 部署取消掉。
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

@@ -2789,7 +2789,7 @@ function boxPoly(x: number, y: number, w: number, h: number, cut: number): Poly 
   ];
 }
 
-/** 上宽下窄的梯形（左右各自独立收窄） */
+
 function taperPoly(
   yTop: number, wTop: number, yBot: number, wBot: number,
   cx = 0, cut = 1
@@ -2808,6 +2808,9 @@ function shiftPoly(pts: Poly, dx: number, dy: number): Poly {
 }
 
 function fillPoly(c: Ctx, pts: Poly): void {
+  // 用原生 fill()。所有顶点都是整数、且多边形是切角矩形/梯形（2 的幂次切角），
+  // 在整数坐标下 Canvas 的斜边只产生极轻的边界混合，不会出现扫描线缝隙。
+  // （自写扫描线填充曾导致凹多边形漏行、出现横向条纹，已弃用。）
   c.beginPath();
   c.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
@@ -2815,6 +2818,20 @@ function fillPoly(c: Ctx, pts: Poly): void {
   c.fill();
 }
 
+/** 把多边形相对质心外扩 d 像素，用作硬边轮廓；不用 stroke() 的平滑线 */
+function expandPoly(pts: Poly, d: number): Poly {
+  let cx = 0, cy = 0;
+  for (const [x, y] of pts) { cx += x; cy += y; }
+  cx /= pts.length; cy /= pts.length;
+  return pts.map(([x, y]) => {
+    let vx = x - cx, vy = y - cy;
+    const len = Math.hypot(vx, vy) || 1;
+    return [x + (vx / len) * d, y + (vy / len) * d] as [number, number];
+  });
+}
+
+/** 切角矩形 */
+/** 上宽下窄的梯形（左右各自独立收窄） */
 function drawCharacter(
   c: Ctx, px: number, py: number, dir: Dir,
   swingPhase: number, moving: boolean, clock: number, look: CharLook
@@ -2901,14 +2918,10 @@ function drawCharacter(
     shapes.push({ pts: boxPoly(-14 * W, -50, 28 * W, 3, 2), color: look.hat.base });
   }
 
-  /* ---------- ① 统一描边 ---------- */
-  c.fillStyle = OUTLINE;
-  c.strokeStyle = OUTLINE;
-  c.lineWidth = 1.6;
-  c.lineJoin = 'round';
+  /* ---------- ① 硬边轮廓：外扩 1px 填充轮廓色，不用 stroke() 的平滑线 ---------- */
   for (const s of shapes) {
-    fillPoly(c, s.pts);
-    c.stroke();
+    c.fillStyle = OUTLINE;
+    fillPoly(c, expandPoly(s.pts, 1.3));
   }
 
   /* ---------- ② 填色 ---------- */
@@ -3001,7 +3014,7 @@ function drawCharacter(
     c.fillStyle = shift(look.hair, -10);
     c.fillRect(-6 * W, eyeY - 2, 3 * W, 1);
     c.fillRect(3 * W, eyeY - 2, 3 * W, 1);
-    c.fillStyle = 'rgba(226,132,112,.4)';
+    c.fillStyle = '#d98f7a';
     c.fillRect(-9 * W, eyeY + 4, 2 * W, 2);
     c.fillRect(7 * W, eyeY + 4, 2 * W, 2);
     c.fillStyle = shift(skin, -56);

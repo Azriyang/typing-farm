@@ -30,9 +30,12 @@
   2. `pwsh -File scripts/clip-to-png.ps1 -Out shot.png` 把剪贴板 base64 解码、
      校验 PNG 头并写到工作目录
   3. 用 `read_image` 读这个文件 → 模型能真正看到画面
-- 多朝向对比：在 `evaluate_script` 里循环设置 `state.player.dir`，每个朝向之间
-  `await` 等待渲染（DevTools 下 rAF 被节流，至少 500ms），把各朝向画到同一张
-  离屏 canvas 的不同位置，一次导出，一眼看全。
+ - 多朝向对比：**不要在一次 `evaluate_script` 里循环设置 dir 再连续截图**。
+   DevTools 下 rAF 被节流，即使等 900ms 也可能抓到上一帧，导致合成的"四朝向图"
+   里 left 显示成 down 的画面（实际踩过，误判成渲染 bug）。可靠做法：
+   每个朝向用**单独的 `evaluate_script` 调用**设置 dir、等 ≥700ms、单独截图，
+   最后用脚本把 4 张独立 PNG 拼成一张。校验：对比各图字节数/hash，
+   若两张开起来完全一样，说明抓到同一帧，必须重截。
 - **视觉类改动（人物、建筑、树木）交付前必须走一遍这个流程看图**，并结合数字证据
   （采样点、轮廓宽高）一起报告。禁止只用数字就宣称"好看了"。
 

@@ -2906,3 +2906,18 @@ tsc 通过。修复前后对比见 preview/leg-before.png 与 preview/leg-after.
 
 验证：8 倍放大全身截图（256x496）确认三处横线全部消失、人物是连贯剪影；
 四朝向图（600x240）正常；tsc 通过。截图见 preview/。
+
+### v4.23 补记：四朝向验收图的抓帧坑
+
+用户指出"四朝向图看起来就两个朝向（上和下）"。逐个单独截图并读回 dir 后确认：
+渲染代码没问题，四个朝向各自不同（down 正面双眼 / left 左侧单眼鼻尖 /
+up 背面后脑勺 / right 右侧单眼鼻尖）。
+
+根因在截图脚本：在**一次 evaluate_script 里循环设 dir 后连续截图**，
+DevTools 下 rAF 被节流，即使等 900ms 也可能抓到上一帧，导致合成图里
+left 显示成 down 的画面。校验线索：连续两张截图的字节数完全一样
+（dir-up 与 dir-right 都是 7193B），说明抓到了同一帧。
+
+修正：AGENTS.md 2.1 已写明——每个朝向必须单独一次 evaluate_script、
+等待 ≥700ms、单独截图，再拼图；并用字节数/hash 校验互不相同。
+正确的四张独立图见 preview/dir-{down,left,up,right}.png。

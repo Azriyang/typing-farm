@@ -1,7 +1,7 @@
 {
   "name": "typing-farm",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "牧场打字物语 — 打字 × 牧场经营",
   "license": "AGPL-3.0-or-later",

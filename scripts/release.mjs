@@ -71,6 +71,7 @@ sh(node, [path.join(root, 'scripts', 'test.mjs')]);
 const pkgPath = path.join(root, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const [maj, min, pat] = pkg.version.split('.').map(Number);
+const prev = pkg.version;
 const next =
   bump === 'major' ? `${maj + 1}.0.0`
   : bump === 'minor' ? `${maj}.${min + 1}.0`
@@ -87,7 +88,7 @@ fs.writeFileSync(
   'utf8'
 );
 
-console.log(`[release] 版本 ${pkg.version} → ${next}`);
+console.log(`[release] 版本 ${prev} → ${next}`);
 
 /* ---------- 4. 提交 ---------- */
 
